@@ -1,16 +1,18 @@
 import os
+from dotenv import load_dotenv
 from threading import Thread
 import time
-from plex_service import PlexService
-from plex_progress_tracker import PlexProgressTracker
+
+from home_assistant.home_assistant import HomeAssistant
+
+from plex.plex_service import PlexService
+from plex.plex_progress_tracker import PlexProgressTracker
+from plex.playback_simulator import PlaybackSimulator
+
 from movie import Movie
-from playback_simulator import PlaybackSimulator
 from scene import Scene
-from color_analysis import ColorAnalysis
-from home_assistant import HomeAssistant
+
 from utils.logger import logger
-from utils.color_utils import calculate_perceived_brightness
-from dotenv import load_dotenv
 
 load_dotenv()
 

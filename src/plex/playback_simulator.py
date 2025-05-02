@@ -1,7 +1,7 @@
 import time
 from typing import Callable
 
-from plex_progress_tracker import PlexProgressTracker
+from plex.plex_progress_tracker import PlexProgressTracker
 from utils.logger import logger
 
 

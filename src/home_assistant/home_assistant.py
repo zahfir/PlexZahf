@@ -1,7 +1,7 @@
 from homeassistant_api import Client
 from typing import List, Tuple, Union
 
-from utils.color_utils import calculate_perceived_brightness
+from utils.color.color_utils import calculate_perceived_brightness
 
 
 class HomeAssistant:

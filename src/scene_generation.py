@@ -6,14 +6,14 @@ from scenedetect import (
     open_video,
 )
 from scenedetect.backends.opencv import VideoStreamCv2
-from scenedetect.frame_timecode import FrameTimecode
-from scenedetect.scene_detector import FlashFilter
 
-from color_analysis import ColorAnalysis
+from utils.color.color_analysis import ColorAnalysis
+from utils.color.color_utils import bgr_to_rgb
+from utils.color.color_averaging import ColorAveraging
+
 from scene import Scene
+
 from utils.logger import logger
-from utils.color_utils import bgr_to_rgb
-from utils.color_averaging import ColorAveraging
 
 
 class SceneGeneration:

@@ -12,8 +12,6 @@ class Movie:
     Attributes:
         path: Path to the movie file
         scenes: List of Scene objects
-        frames: List of Frame objects
-        processor: VideoProcessor for extracting frames
     """
 
     def __init__(self, path: str):

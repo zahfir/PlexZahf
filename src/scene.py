@@ -1,6 +1,6 @@
 from typing import List, Tuple
 
-from utils.color_utils import color_difference
+from utils.color.color_utils import color_difference
 
 
 class Scene:

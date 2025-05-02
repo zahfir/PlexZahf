@@ -2,7 +2,7 @@ import threading
 import time
 from typing import Callable
 
-from plex_service import PlexService
+from plex.plex_service import PlexService
 
 
 class PlexProgressTracker:
