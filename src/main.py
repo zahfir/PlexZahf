@@ -33,41 +33,13 @@ class Main:
             password=Main.PLEX_PASSWORD,
             server_name=Main.PLEX_SERVER,
         )
+
         # self.home_assistant = HomeAssistant(Main.HASS_URL, Main.ACCESS_TOKEN)
+
         self.tracker = None
-        self.video_processor = None
 
-        # Playback tracking
+        # State variable - Scene used for current lighting
         self.current_lighting: Scene = None
-
-    def real_time_processing(self, position_ms):
-        """Called when playback position changes"""
-        logger.info(f"Playback position: {position_ms/1000:.2f}s")
-
-        # If video processor is initialized, get the current frame
-        if self.video_processor:
-            # Gather several subsequent frames
-            frames = self.video_processor.extract_frames(
-                position_ms=position_ms,
-                frequency_ms=1000,
-                max_frames=5,
-            )
-
-            # Process the frame to get dominant color
-            if len(frames) > 0:
-                # Extract average color across frames
-                extract_method = ColorAnalysis.extract_dominant_color_hsv
-                b, g, r = ColorAnalysis.extract_color_multiple_frames(
-                    frames,
-                    extract_method,
-                    bins=32,
-                )
-
-                # Set living room light colors
-                rgb = [int(r), int(g), int(b)]
-                brightness = min(int(calculate_perceived_brightness(rgb) * 2), 100)
-                logger.info(f"Color: {rgb} {brightness}%")
-                self.home_assistant.set_tv_light_color(rgb, brightness)
 
     def on_position_change(self, position_ms):
         """
@@ -154,8 +126,6 @@ class Main:
             # Clean up
             if self.tracker:
                 self.tracker.stop()
-            if self.video_processor:
-                self.video_processor.close()
 
 
 # Run the function with a video stream
