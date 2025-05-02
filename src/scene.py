@@ -1,5 +1,6 @@
 from typing import List, Tuple
 
+from constants import MERGE_SCENE_COLOR_THRESHOLD, MIN_MERGE_SCENE_DURATION_MS
 from utils.color.color_utils import color_difference
 
 
@@ -53,13 +54,16 @@ class Scene:
         return self.end - self.start
 
     def is_combinable(
-        self, other_scene: "Scene", min_length=10000, diff_threshold=0.20
+        self,
+        other_scene: "Scene",
+        min_length=MIN_MERGE_SCENE_DURATION_MS,
+        color_threshold=MERGE_SCENE_COLOR_THRESHOLD,
     ):
         """Returns True if other_scene is small and similar enough to be merged"""
         color1, color2 = self.color, other_scene.color
 
         scene_is_short: bool = other_scene.duration() < min_length
-        scene_colors_similar: bool = color_difference(color1, color2) < diff_threshold
+        scene_colors_similar: bool = color_difference(color1, color2) < color_threshold
 
         return scene_is_short and scene_colors_similar
 

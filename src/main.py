@@ -12,11 +12,10 @@ from plex.playback_simulator import PlaybackSimulator
 from movie import Movie
 from scene import Scene
 
+from constants import PLAYBACK_POLL_INTERVAL_SEC, SCENE_BOUNDARY_THRESHOLD_MS
 from utils.logger import logger
 
 load_dotenv()
-
-SCENE_BOUNDARY_THRESHOLD_MS = 2000
 
 
 class Main:
@@ -120,7 +119,7 @@ class Main:
         try:
             # Keep main thread alive
             while True:
-                time.sleep(0.5)
+                time.sleep(PLAYBACK_POLL_INTERVAL_SEC)
                 self.handle_scene_boundary(self.simulator.current_position_ms)
         except KeyboardInterrupt:
             logger.info("Program interrupted by user")

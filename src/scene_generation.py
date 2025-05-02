@@ -7,6 +7,7 @@ from scenedetect import (
 )
 from scenedetect.backends.opencv import VideoStreamCv2
 
+from constants import MIN_FRAMES_AFTER_CUT, VIDEO_READ_FREQ_MS
 from utils.color.color_analysis import ColorAnalysis
 from utils.color.color_utils import bgr_to_rgb
 from utils.color.color_averaging import ColorAveraging
@@ -21,7 +22,7 @@ class SceneGeneration:
 
         self.detector = AdaptiveDetector(
             adaptive_threshold=2,
-            min_scene_len=125,
+            min_scene_len=MIN_FRAMES_AFTER_CUT,
             window_width=2,
             min_content_val=15,
             weights=ContentDetector.Components(
@@ -36,7 +37,7 @@ class SceneGeneration:
 
         self.num_scenes: int = 0
 
-    def run(self, path: str, seek_ms: int = 500):
+    def run(self, path: str, seek_ms: int = VIDEO_READ_FREQ_MS):
         """
         Generator function for scenes of entire video
 
