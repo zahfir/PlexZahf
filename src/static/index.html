@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>PlexZahf Control</title>
+        <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 500px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+            width: 100%;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f2f2f2;
+            border-radius: 4px;
+        }
+    </style>
+    </head>
+    <body>
+        <h1>PlexZahf Control</h1>
+
+        <button id="startBtn" class="button">Start PlexZahf</button>
+
+        <div class="status">
+            Status: <span id="statusText">Checking...</span>
+        </div>
+
+        <script>
+        const statusText = document.getElementById('statusText');
+        const startBtn = document.getElementById('startBtn');
+        
+        // Check status initially and every 5 seconds
+        checkStatus();
+        setInterval(checkStatus, 5000);
+        
+        startBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/start', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                checkStatus();
+            } catch (error) {
+                statusText.textContent = 'Error: ' + error.message;
+            }
+        });
+        
+        async function checkStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                statusText.textContent = data.status;
+                
+                if (data.status === 'running') {
+                    startBtn.disabled = true;
+                    startBtn.textContent = 'PlexZahf Running';
+                } else {
+                    startBtn.disabled = false;
+                    startBtn.textContent = 'Start PlexZahf';
+                }
+            } catch (error) {
+                statusText.textContent = 'Error connecting to server';
+            }
+        }
+    </script>
+    </body>
+</html>
