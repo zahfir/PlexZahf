@@ -3,7 +3,6 @@ from typing import List, Optional
 
 import numpy as np
 
-from scene_generation import SceneGeneration
 from constants import (
     FPS,
     HEIGHT,
@@ -142,22 +141,6 @@ class Movie:
             end=scene2.start,
             color=[int(-scene2.color[0]), scene2.color[1], scene2.color[2]],
         )
-
-    def generate_scenes(self):
-        generation = SceneGeneration()
-
-        for scene in generation.start(self.path):
-            # Assign actual array index
-            scene.array_index = len(self.scenes)
-
-            # If possible, merge similar color scenes
-            if self.scenes and self.scenes[-1].is_combinable(scene):
-                self.extend_last_scene(scene.end)
-                logger.debug(f"Extended last scene with {scene}")
-                continue
-
-            self.scenes.append(scene)
-            logger.debug(f"Created scene - {scene}")
 
     def extend_last_scene(self, new_end_position: int):
         self.scenes[-1].end = new_end_position
