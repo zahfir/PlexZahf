@@ -12,7 +12,11 @@ from plex.playback_simulator import PlaybackSimulator
 from movie import Movie
 from scene import Scene
 
-from constants import PLAYBACK_POLL_INTERVAL_SEC, SCENE_BOUNDARY_THRESHOLD_MS
+from constants import (
+    BRIGHTNESS,
+    PLAYBACK_POLL_INTERVAL_SEC,
+    SCENE_BOUNDARY_THRESHOLD_MS,
+)
 from utils.logger import logger
 
 load_dotenv()
@@ -23,6 +27,8 @@ class Main:
     PLEX_USERNAME = os.getenv("PLEX_USERNAME")
     PLEX_PASSWORD = os.getenv("PLEX_PASSWORD")
     PLEX_SERVER = os.getenv("PLEX_SERVER")
+    PLEX_TOKEN = os.getenv("PLEX_TOKEN")
+    PLEX_SERVER_ADDRESS = os.getenv("PLEX_SERVER_ADDRESS")
 
     # Home Assistant configuration
     HASS_URL = os.getenv("HASS_URL")
@@ -31,16 +37,17 @@ class Main:
     def __init__(self):
         self.plex_service = PlexService(
             username=Main.PLEX_USERNAME,
-            password=Main.PLEX_PASSWORD,
-            server_name=Main.PLEX_SERVER,
+            password=Main.PLEX_TOKEN,
+            server_name=Main.PLEX_SERVER_ADDRESS,
         )
 
-        # self.home_assistant = HomeAssistant(Main.HASS_URL, Main.ACCESS_TOKEN)
+        self.home_assistant = HomeAssistant(Main.HASS_URL, Main.ACCESS_TOKEN)
 
-        self.tracker = None
+        self.tracker: PlexProgressTracker | None = None
 
         # State variable - Scene used for current lighting
         self.current_lighting: Scene = None
+        self.is_syncing_lights: bool = False
 
     def on_position_change(self, position_ms):
         """
@@ -59,6 +66,7 @@ class Main:
 
         # Case 2: Either first scene or user seeked to new position
         logger.warning(f"JUMP/SEEK to {position_ms}")
+        self.current_lighting = None
         new_scene = self.movie.get_scene_at_time(position_ms)
         # TODO CHANGE TO new_scene.next if position is nearing_end of new_scene
         self.change_to_scene(new_scene)
@@ -66,12 +74,16 @@ class Main:
     def extract_frames_in_background(self):
         """Run frame extraction in background thread"""
         logger.info("Starting frame extraction in background thread")
-        self.movie.generate_scenes()
+        self.movie.analyse()
         logger.info("Frame extraction completed")
 
     def change_lights_to_match_scene(self, scene: Scene):
-        logger.info(f"Changing lights: {scene}")
-        # self.home_assistant.set_living_room_lights_color(rgb_color=scene.color)
+        if self.is_syncing_lights:
+            logger.info(f"Changing lights: {scene}")
+            self.home_assistant.set_living_room_lights_color(
+                rgb_color=scene.color,
+                brightness_pct=BRIGHTNESS,
+            )
 
     def change_to_scene(self, scene):
         """Updates lighting in both class state and room"""
@@ -81,7 +93,7 @@ class Main:
 
     def handle_scene_boundary(self, position_ms):
         """Called often. Changes lights preemptively as playback nears the end of a scene."""
-        logger.debug(f"{position_ms}")
+        logger.debug(f"{position_ms}ms")
         curr = self.current_lighting
         if curr:
             nearing_end_of_scene = curr.end - position_ms < SCENE_BOUNDARY_THRESHOLD_MS
@@ -97,6 +109,7 @@ class Main:
             return
 
         logger.info(f"Found stream URL: {stream_url}")
+
         # Create a movie from a file
         self.movie = Movie(stream_url)
 
@@ -115,6 +128,9 @@ class Main:
 
         # Start the tracker
         self.tracker.start()
+
+        # Start syncing lights
+        self.is_syncing_lights = True
 
         try:
             # Keep main thread alive

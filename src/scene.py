@@ -19,7 +19,7 @@ class Scene:
         start: int,
         end: int,
         color: List[int] | Tuple[int, int, int],
-        array_index: int,
+        array_index: int | None = None,
     ):
         """
         Initialize a Scene object.
@@ -35,14 +35,8 @@ class Scene:
         if end < start:
             raise ValueError("End time must be after start time")
 
-        if (
-            not isinstance(color, (list, tuple))
-            or len(color) != 3
-            or not all(0 <= c <= 255 for c in color)
-        ):
-            raise ValueError(
-                "Color must be a list or tuple of 3 integers between 0 and 255"
-            )
+        if not isinstance(color, (list, tuple)) or len(color) != 3:
+            raise ValueError("Color must be a list or tuple of 3 integers")
 
         self.start = start
         self.end = end

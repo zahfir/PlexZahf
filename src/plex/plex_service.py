@@ -14,8 +14,17 @@ class PlexService:
             password: Plex account password
             server_name: Name of the Plex server to connect to
         """
-        self.account = MyPlexAccount(username=username, password=password)
-        self.server: PlexServer = self.account.resource(server_name).connect()
+        self.username = username
+
+        # BASE URL AND TOKEN LOGIN
+        self._token_login(base_url=server_name, token=password)
+
+        # USER + PW ACCOUNT LOGIN
+        # self.account = MyPlexAccount(username=username, password=password)
+        # self.server: PlexServer = self.account.resource(server_name).connect()
+
+    def _token_login(self, base_url, token):
+        self.server: PlexServer = PlexServer(baseurl=base_url, token=token)
 
     def find_session_by_username(self, username: str):
         """
@@ -45,26 +54,8 @@ class PlexService:
         Returns:
             URL string for the transcoded media stream
         """
-        if not session or not hasattr(session, "media") or not session.media:
-            return ""
-
-        media = session.media[0]
-        if not media.parts:
-            return ""
-
-        part = media.parts[0]
-        base_url = f"{self.server._baseurl}{part.key}?X-Plex-Token={self.server._token}"
-
-        # Add transcoding parameters
-        quality_params = resolution_params = ""
-        if quality:
-            quality_params = f"&videoQuality={quality}&maxVideoBitrate={quality}"
-        if resolution:
-            resolution_params = f"&videoResolution={resolution}"
-
-        transcode_params = quality_params + resolution_params
-
-        return base_url + transcode_params
+        if session:
+            return session.getStreamURL()
 
     def get_stream_url_by_username(self, username: str) -> str | None:
         """

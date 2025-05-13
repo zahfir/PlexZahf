@@ -75,3 +75,31 @@ def color_difference(rgb1, rgb2):
 
     # Weighted combination
     return h_diff * 0.6 + s_diff * 0.3 + v_diff * 0.1
+
+
+def get_color_hsv_metrics(rgb_colors):
+    """
+    Convert RGB dominant colors to HSV color space and extract hue and saturation values.
+
+    Args:
+        dominant_colors: NumPy array of RGB colors with shape (n, 3)
+
+    Returns:
+        Hues and saturations arrays
+    """
+    # Initialize lists to store results
+    hues = []
+    saturations = []
+
+    for color in rgb_colors:
+        # Convert RGB to BGR (OpenCV format)
+        bgr_color = np.uint8([[color[::-1]]])
+
+        # Convert BGR to HSV
+        hsv = cv2.cvtColor(bgr_color, cv2.COLOR_BGR2HSV)[0][0]
+
+        # Extract components (H: 0-179 and S: 0-255 in OpenCV)
+        hues.append(hsv[0])
+        saturations.append(hsv[1])
+
+    return np.array(hues), np.array(saturations)
