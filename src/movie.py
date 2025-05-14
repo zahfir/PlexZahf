@@ -72,8 +72,8 @@ class Movie:
 
             print("Frame analysis: ", time.time() - start)
 
-        with open("revenant_colors.pkl", "wb") as f:
-            pickle.dump(self.frame_colors, f)
+        # with open("revenant_colors.pkl", "wb") as f:
+        #     pickle.dump(self.frame_colors, f)
 
         lighting_schedule = self.frame_colors_to_schedule(self.frame_colors)
         self.scenes = self.schedule_to_connected_scenes(lighting_schedule)

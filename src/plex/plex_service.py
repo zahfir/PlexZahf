@@ -23,6 +23,8 @@ class PlexService:
         # self.account = MyPlexAccount(username=username, password=password)
         # self.server: PlexServer = self.account.resource(server_name).connect()
 
+        self.session = None
+
     def _token_login(self, base_url, token):
         self.server: PlexServer = PlexServer(baseurl=base_url, token=token)
 
@@ -39,6 +41,7 @@ class PlexService:
         for session in self.server.sessions():
             # Check if this session belongs to the user we're looking for
             if hasattr(session, "usernames") and username in session.usernames:
+                self.session = session
                 return session
         return None
 
@@ -71,3 +74,11 @@ class PlexService:
         if not session:
             return None
         return self.get_stream_url(session, "128", "320x240")
+
+    def now_playing(self):
+        if self.session:
+            return {
+                "artUrl": self.session.artUrl,
+                "thumbUrl": self.session.thumbUrl,
+                "title": self.session._prettyfilename(),
+            }

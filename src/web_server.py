@@ -21,8 +21,7 @@ def start_service():
 
     try:
         plexzahf_instance = Main()
-        plexzahf_thread = threading.Thread(target=plexzahf_instance.start)
-        plexzahf_thread.daemon = True
+        plexzahf_thread = threading.Thread(target=plexzahf_instance.start, daemon=True)
         plexzahf_thread.start()
         status = "running"
         return jsonify({"status": "started"})
