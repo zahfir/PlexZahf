@@ -3,6 +3,7 @@ import numpy as np
 from sklearn.cluster import MiniBatchKMeans
 import matplotlib.pyplot as plt
 
+from constants import COLORS_PER_FRAME
 from utils.color.color_utils import get_color_hsv_metrics
 
 PIXEL_SAMPLE_SIZE = 1000
@@ -16,7 +17,7 @@ class FrameAnalysis:
     """
 
     @classmethod
-    def get_top_colors(cls, image, num_colors=5, show_plot=False):
+    def get_top_colors(cls, image, show_plot=False):
         """
         Extract the dominant colors from an image using MiniBatchKMeans clustering.
 
@@ -39,7 +40,7 @@ class FrameAnalysis:
 
         # Step 3: MiniBatchKMeans clustering
         kmeans = MiniBatchKMeans(
-            n_clusters=num_colors,
+            n_clusters=COLORS_PER_FRAME,
             random_state=RANDOM_STATE,
             batch_size=PIXEL_SAMPLE_SIZE,
         )

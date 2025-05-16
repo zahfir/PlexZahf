@@ -1,3 +1,4 @@
+from io import BytesIO
 import time
 from typing import List, Optional
 
@@ -14,6 +15,11 @@ from constants import (
     WIDTH,
 )
 from lighting_schedule import LightingSchedule
+from utils.db.database_service import (
+    ConfigNotFoundError,
+    DatabaseService,
+    MovieNotFoundError,
+)
 from utils.file_handler import FileHandler
 from utils.logger import logger
 from scene import Scene
@@ -31,7 +37,7 @@ class Movie:
         scenes: List of Scene objects
     """
 
-    def __init__(self, path: str):
+    def __init__(self, path: str, name: str = ""):
         """
         Initialize a Movie object.
 
@@ -39,44 +45,103 @@ class Movie:
             path: Path to the movie file
         """
         self.path = path
-        self.frame_colors: List[dict] = []
+        self.name = name
+        self._id = None  # Database id
+        self.frame_colors: List[dict] = []  # Types: dicts + np arrays
         self.scenes: List[Scene] = []
 
+    def load_db_for_existing_data(self):
+        """Load any existing data on this movie from the database."""
+        with DatabaseService() as db:
+            try:
+                self._id = db.load_movie(self.name)
+                self.frame_colors = db.load_movie_frame_colors(self._id)
+                self.scenes = db.load_movie_schedule(
+                    self._id,
+                    FPS,
+                    WIDTH,
+                    HEIGHT,
+                    HUE_TOLERANCE,
+                    MAX_GAP_FRAMES,
+                    MIN_SCENE_FRAMES,
+                    SCENE_BOUNDARY_THRESHOLD_MS,
+                    SCORE_THRESHOLD,
+                )
+
+            except MovieNotFoundError:
+                logger.info(f"Movie {self.name} not in the database. Downloading...")
+                return
+            except ConfigNotFoundError:
+                logger.info(
+                    f"Movie config for {self.name} not in the database. Making schedule..."
+                )
+                return
+            except Exception as e:
+                logger.error(f"Error loading movie data from DB: {e}")
+                return
+
+    def save_file_to_db(self):
+        """Save the movie and frame to the database."""
+        with DatabaseService() as db:
+            self._id = db.save_file(self.name, self.frame_colors)
+
+    def save_scenes_to_db(self):
+        """Save the movie and self.scenes to the database."""
+        with DatabaseService() as db:
+            db.save_schedule(
+                self._id,
+                self.scenes,
+                FPS,
+                WIDTH,
+                HEIGHT,
+                HUE_TOLERANCE,
+                MAX_GAP_FRAMES,
+                MIN_SCENE_FRAMES,
+                SCENE_BOUNDARY_THRESHOLD_MS,
+                SCORE_THRESHOLD,
+            )
+
+    def _download_movie(self) -> BytesIO:
+        """Download the movie file and return it as a BytesIO object."""
+        process = FileHandler.create_ffmpeg_process(self.path)
+        return FileHandler.read_stream_to_memory(process)
+
+    def download_movie_and_extract_frames(self):
+        memfile: BytesIO = self._download_movie()
+        if not memfile:
+            logger.error("Failed to download movie.")
+            return
+
+        start = time.time()
+        buffer = memfile.read()
+
+        with ProcessPoolExecutor(max_workers=10) as executor:
+            for batch_results in executor.map(
+                process_frame_batch,
+                chunk_frames(buffer, WIDTH, HEIGHT, chunk_size=100),
+            ):
+                self.frame_colors.extend(batch_results)
+
+        print("File analysis - extract colors time: ", time.time() - start)
+
     def analyse(self):
-        """Downloads file to memory, then analyses frames and constructs scenes."""
-        # import os
-        import pickle
+        """
+        Downloads file to memory or fetches existing DB data.
+        Analyses frames and constructs scenes.
+        This method uses multiprocessing to speed up the analysis of frames.
+        Avoids reprocessing data that exists in the database.
+        """
+        # Check if the movie is already in the database
+        self.load_db_for_existing_data()
 
-        # if os.path.exists("birdman_frame_colors.pkl"):
-        #     with open("birdman_frame_colors.pkl", "rb") as f:
-        #         self.frame_colors = pickle.load(f)
-        # if os.path.exists("birdman_schedule.pkl"):
-        #     with open("birdman_schedule.pkl", "rb") as f:
-        #         lighting_schedule = pickle.load(f)
-
-        # self.scenes = self.schedule_to_connected_scenes(lighting_schedule)
-        # return
         if not self.frame_colors:
-            process = FileHandler.create_ffmpeg_process(self.path)
-            memory_file = FileHandler.read_stream_to_memory(process)
+            self.download_movie_and_extract_frames()
+            self.save_file_to_db()
 
-            start = time.time()
-            buffer = memory_file.read()
-
-            with ProcessPoolExecutor(max_workers=10) as executor:
-                for batch_results in executor.map(
-                    process_frame_batch,
-                    chunk_frames(buffer, WIDTH, HEIGHT, chunk_size=100),
-                ):
-                    self.frame_colors.extend(batch_results)
-
-            print("Frame analysis: ", time.time() - start)
-
-        # with open("revenant_colors.pkl", "wb") as f:
-        #     pickle.dump(self.frame_colors, f)
-
-        lighting_schedule = self.frame_colors_to_schedule(self.frame_colors)
-        self.scenes = self.schedule_to_connected_scenes(lighting_schedule)
+        if not self.scenes:
+            lighting_schedule = self.frame_colors_to_schedule(self.frame_colors)
+            self.scenes = self.schedule_to_connected_scenes(lighting_schedule)
+            self.save_scenes_to_db()
 
     def frame_colors_to_schedule(self, frame_colors):
         instructions = []
@@ -95,13 +160,14 @@ class Movie:
         return LightingSchedule.greedy_schedule_from_heap(instructions)
 
     def schedule_to_connected_scenes(self, lighting_schedule) -> List[Scene]:
-        scenes = self.scenes_from_schedule(lighting_schedule)
-        connected = self.connect_scene_schedule(scenes)
+        scenes = Movie.scenes_from_schedule(lighting_schedule)
+        connected = Movie.connect_scene_schedule(scenes)
         for i in range(len(connected)):
             connected[i].array_index = i
         return connected
 
-    def scenes_from_schedule(self, lighting_schedule):
+    @staticmethod
+    def scenes_from_schedule(lighting_schedule):
         scenes = []
         for light_event in lighting_schedule:
             scenes.append(
@@ -113,7 +179,8 @@ class Movie:
             )
         return scenes
 
-    def connect_scene_schedule(self, scenes: List[Scene]) -> List[Scene]:
+    @staticmethod
+    def connect_scene_schedule(scenes: List[Scene]) -> List[Scene]:
         """Adds 'dark' scenes in large gaps between scenes and connects close scenes"""
         n = len(scenes)
 
@@ -128,14 +195,15 @@ class Movie:
             gap_ms = nxt.start - cur.end
 
             if gap_ms > SCENE_BOUNDARY_THRESHOLD_MS * 2:
-                connected_scenes.append(self._dark_filler_scene(cur, nxt))
+                connected_scenes.append(Movie._dark_filler_scene(cur, nxt))
                 continue
             cur.end = nxt.start
 
         connected_scenes.append(scenes[-1])
         return connected_scenes
 
-    def _dark_filler_scene(self, scene1: Scene, scene2: Scene) -> Scene:
+    @staticmethod
+    def _dark_filler_scene(scene1: Scene, scene2: Scene) -> Scene:
         return Scene(
             start=scene1.end,
             end=scene2.start,

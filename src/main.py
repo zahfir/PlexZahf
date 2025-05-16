@@ -23,6 +23,72 @@ load_dotenv()
 
 
 class Main:
+    # def drop_all_tables(conn, cursor):
+    #     """Drop all tables in the database.
+
+    #     Returns:
+    #         bool: True if successful, False otherwise
+    #     """
+    #     tables = ["FRAME_COLOR", "SCENE", "FRAME", "MOVIE_CONFIG", "MOVIE"]
+
+    #     try:
+    #         # Temporarily disable foreign key constraints
+    #         cursor.execute("PRAGMA foreign_keys = OFF")
+
+    #         # Drop tables in reverse order to handle dependencies
+    #         for table in tables:
+    #             cursor.execute(f"DROP TABLE IF EXISTS {table}")
+    #             print(f"Table '{table}' dropped")
+
+    #         # Re-enable foreign key constraints
+    #         cursor.execute("PRAGMA foreign_keys = ON")
+    #         conn.commit()
+    #         print("All tables dropped successfully")
+    #         return True
+    #     except:
+    #         return
+
+    # def get_table_counts(cursor):
+    #     """Get the number of rows in each table.
+
+    #     Returns:
+    #         dict: Dictionary with table names as keys and row counts as values.
+    #     """
+    #     tables = ["MOVIE", "FRAME", "SCENE", "MOVIE_CONFIG", "FRAME_COLOR"]
+    #     counts = {}
+
+    #     try:
+    #         for table in tables:
+    #             cursor.execute(f"SELECT COUNT(*) FROM {table}")
+    #             count = cursor.fetchone()[0]
+    #             counts[table] = count
+
+    #         return counts
+    #     except:
+    #         return
+
+    # db = DatabaseService()
+    # db._create_tables()
+
+    # if os.path.exists("birdman_frame_colors.pkl"):
+    #     with open("birdman_frame_colors.pkl", "rb") as f:
+    #         import pickle
+
+    #         frame_colors = pickle.load(f)
+
+    # if os.path.exists("birdman_schedule.pkl"):
+    #     with open("birdman_schedule.pkl", "rb") as f:
+    #         import pickle
+
+    #         lighting_schedule = pickle.load(f)
+
+    # # movie_id = db.save_file("birdman", frame_colors)
+
+    # movie_id = db.load_movie("birdman")
+    # recon = db.load_movie_frame_colors(movie_id)
+    # pickle_scenes = Movie("").schedule_to_connected_scenes(lighting_schedule)
+    # config_id = db.save_schedule(movie_id, pickle_scenes)
+
     # Plex
     PLEX_USERNAME = os.getenv("PLEX_USERNAME")
     PLEX_PASSWORD = os.getenv("PLEX_PASSWORD")
@@ -37,8 +103,8 @@ class Main:
     def __init__(self):
         self.plex_service = PlexService(
             username=Main.PLEX_USERNAME,
-            password=Main.PLEX_TOKEN,
-            server_name=Main.PLEX_SERVER_ADDRESS,
+            secret=Main.PLEX_PASSWORD,
+            server=Main.PLEX_SERVER,
         )
 
         self.home_assistant = HomeAssistant(Main.HASS_URL, Main.ACCESS_TOKEN)
@@ -47,7 +113,18 @@ class Main:
 
         # State variable - Scene used for current lighting
         self.current_lighting: Scene = None
+
         self.is_syncing_lights: bool = False
+
+        self.brightness_pct: int = BRIGHTNESS
+
+    def _toggle_sync_lights(self) -> bool:
+        self.is_syncing_lights = not self.is_syncing_lights
+        return self.is_syncing_lights
+
+    def _set_brightness_pct(self, brightness) -> int:
+        self.brightness_pct = brightness
+        return self.brightness_pct
 
     def on_position_change(self, position_ms):
         """
@@ -82,7 +159,7 @@ class Main:
             logger.info(f"Changing lights: {scene}")
             self.home_assistant.set_living_room_lights_color(
                 rgb_color=scene.color,
-                brightness_pct=BRIGHTNESS,
+                brightness_pct=self.brightness_pct,
             )
 
     def change_to_scene(self, scene):
@@ -111,7 +188,7 @@ class Main:
         logger.info(f"Found stream URL: {stream_url}")
 
         # Create a movie from a file
-        self.movie = Movie(stream_url)
+        self.movie = Movie(stream_url, self.plex_service.session._prettyfilename())
 
         # Start frame extraction in a separate thread
         extraction_thread = Thread(

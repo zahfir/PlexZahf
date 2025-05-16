@@ -41,3 +41,14 @@ class Scene:
         self.end = end
         self.color = list(color)
         self.array_index = array_index
+
+    def to_json(self):
+        return {
+            "start": self.start,
+            "end": self.end,
+            "color": self.color,
+            "array_index": self.array_index,
+        }
+
+    def __repr__(self):
+        return f"Scene(i={self.array_index}, start={self.start}, end={self.end}, color={self.color}"

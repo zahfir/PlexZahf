@@ -5,7 +5,7 @@ from plexapi.server import PlexServer
 class PlexService:
     """Service class to interact with Plex API and retrieve stream URLs."""
 
-    def __init__(self, username: str, password: str, server_name: str):
+    def __init__(self, username: str, secret: str, server: str):
         """
         Initialize the PlexService with account credentials and server name.
 
@@ -15,18 +15,22 @@ class PlexService:
             server_name: Name of the Plex server to connect to
         """
         self.username = username
-
-        # BASE URL AND TOKEN LOGIN
-        self._token_login(base_url=server_name, token=password)
-
-        # USER + PW ACCOUNT LOGIN
-        # self.account = MyPlexAccount(username=username, password=password)
-        # self.server: PlexServer = self.account.resource(server_name).connect()
+        self.server: PlexServer = self._server_login(
+            username=username,
+            secret=secret,
+            server=server,
+        )
 
         self.session = None
 
-    def _token_login(self, base_url, token):
-        self.server: PlexServer = PlexServer(baseurl=base_url, token=token)
+    def _server_login(self, username: str, secret: str, server: str):
+        if "http" in server:
+            # If the server name contains 'http', treat it as a base URL
+            return PlexServer(baseurl=server, token=secret)
+
+        # Otherwise, assume local server and log in as user/pass account
+        self.account = MyPlexAccount(username=username, password=secret)
+        return self.account.resource(server).connect()
 
     def find_session_by_username(self, username: str):
         """
