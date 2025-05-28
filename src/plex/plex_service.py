@@ -21,16 +21,19 @@ class PlexService:
             server=server,
         )
 
-        self.session = None
+        self.session = self.find_session_by_username(username)
 
     def _server_login(self, username: str, secret: str, server: str):
-        if "http" in server:
-            # If the server name contains 'http', treat it as a base URL
-            return PlexServer(baseurl=server, token=secret)
+        try:
+            if "http" in server:
+                # If the server name contains 'http', treat it as a base URL
+                return PlexServer(baseurl=server, token=secret)
 
-        # Otherwise, assume local server and log in as user/pass account
-        self.account = MyPlexAccount(username=username, password=secret)
-        return self.account.resource(server).connect()
+            # Otherwise, assume local server and log in as user/pass account
+            self.account = MyPlexAccount(username=username, password=secret)
+            return self.account.resource(server).connect()
+        except Exception as e:
+            raise Exception(f"Error logging into Plex server: {e}")
 
     def find_session_by_username(self, username: str):
         """
@@ -80,6 +83,16 @@ class PlexService:
         return self.get_stream_url(session, "128", "320x240")
 
     def now_playing(self):
+        """
+        Get the currently playing media information.
+
+        Returns:
+            dict: {
+                "artUrl": URL for the media's artwork
+                "thumbUrl": URL for the media's thumbnail
+                "title": Pretty filename of the media
+            }
+        """
         if self.session:
             return {
                 "artUrl": self.session.artUrl,

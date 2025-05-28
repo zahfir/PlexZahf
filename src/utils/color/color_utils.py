@@ -103,3 +103,17 @@ def get_color_hsv_metrics(rgb_colors):
         saturations.append(hsv[1])
 
     return np.array(hues), np.array(saturations)
+
+
+def whiteness_level(rgb):
+    """Returns 0-1 whiteness of a color (assumes 100% brightness)
+    Args:
+        rgb: List or tuple of +ve RGB values [R, G, B] (0-255)
+    https://www.rapidtables.com/convert/color/rgb-to-hsv.html
+    """
+    chroma = max(rgb) - min(rgb)
+    whiteness = 255 - chroma
+    return whiteness / 255
+
+
+print()

@@ -68,12 +68,13 @@ class HomeAssistant:
         brightness_pct: int | None = None,
     ) -> None:
         """Set the color of both living room lights."""
-        client = self._get_client()
 
         dark_scene = rgb_color[0] < 0
         if dark_scene:
-            return self.dim_and_color(rgb_color)
+            return
+            # return self.dim_and_color(rgb_color)
 
+        client = self._get_client()
         if brightness_pct is not None:
             return client.trigger_service(
                 "light",

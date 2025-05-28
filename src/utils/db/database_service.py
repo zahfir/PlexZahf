@@ -6,7 +6,7 @@ from uuid import uuid4
 import numpy as np
 
 from scene import Scene
-from constants import COLORS_PER_FRAME
+from config.movie_config import MovieConfig
 
 DEFAULT_DB_FILEPATH = "database.db"
 
@@ -103,6 +103,7 @@ class DatabaseService:
                 min_scene_frames INTEGER NOT NULL,
                 scene_boundary_threshold_ms INTEGER NOT NULL,
                 score_threshold INTEGER NOT NULL,
+                colorful_bias INTEGER NOT NULL,
                 FOREIGN KEY (movie_id) REFERENCES MOVIE(movie_id)
             )
             """
@@ -136,7 +137,6 @@ class DatabaseService:
         """Close the database connection."""
         if hasattr(self, "conn") and self.conn:
             self.conn.close()
-            print("Database connection closed")
 
     def __del__(self):
         """Destructor to ensure connection is closed."""
@@ -171,32 +171,23 @@ class DatabaseService:
     def load_movie_schedule(
         self,
         movie_id: str,
-        fps: int,
-        width: int,
-        height: int,
-        hue_tolerance: int,
-        max_gap_frames: int,
-        min_scene_frames: int,
-        scene_boundary_threshold_ms: int,
-        score_threshold: int,
+        config: MovieConfig,
     ) -> List[Scene]:
-        """Load the schedule for a movie by its name."""
-        config = self.get_movie_config(
-            movie_id,
-            fps,
-            width,
-            height,
-            hue_tolerance,
-            max_gap_frames,
-            min_scene_frames,
-            scene_boundary_threshold_ms,
-            score_threshold,
-        )
+        """Load the schedule for a movie by its name and config.
 
-        if not config:
+        Args:
+            movie_id (str): The movie ID.
+            config (MovieConfig): The movie configuration.
+
+        Returns:
+            List[Scene]: List of scenes for the movie.
+        """
+        db_config = self.get_movie_config(movie_id, config)
+
+        if not db_config:
             raise ConfigNotFoundError()
 
-        rows = self.get_scenes_by_config_id(config[0])
+        rows = self.get_scenes_by_config_id(db_config[0])
 
         return [DatabaseService._scene_from_row(i, row) for i, row in enumerate(rows)]
 
@@ -214,35 +205,21 @@ class DatabaseService:
         self,
         movie_id: str,
         scenes: List[Scene],
-        fps: int,
-        width: int,
-        height: int,
-        hue_tolerance: int,
-        max_gap_frames: int,
-        min_scene_frames: int,
-        scene_boundary_threshold_ms: int,
-        score_threshold: int,
+        config: MovieConfig,
     ):
         """Save new Scenes + Config to the DB.
         Two tables are updated - SCENE, MOVIE_CONFIG
 
         Args:
-            name (str): The name of the movie.
+            movie_id (str): The movie ID.
             scenes (list): List of Scene objects.
-            config (dict): Configuration dictionary for the movie.
+            config (MovieConfig): Configuration for the movie.
         """
         try:
             config_id = self.add_scenes_and_config(
                 movie_id=movie_id,
                 scenes=scenes,
-                fps=fps,
-                width=width,
-                height=height,
-                hue_tolerance=hue_tolerance,
-                max_gap_frames=max_gap_frames,
-                min_scene_frames=min_scene_frames,
-                scene_boundary_threshold_ms=scene_boundary_threshold_ms,
-                score_threshold=score_threshold,
+                config=config,
             )
             print(f"Scenes saved successfully with config id: {config_id}")
             return config_id
@@ -320,31 +297,16 @@ class DatabaseService:
             print(f"Error retrieving scenes by config_id: {e}")
             return []
 
-    # Method for looking up a movie's config by movie-id+config-vals
     def get_movie_config(
         self,
         movie_id,
-        fps,
-        width,
-        height,
-        hue_tolerance,
-        max_gap_frames,
-        min_scene_frames,
-        scene_boundary_threshold_ms,
-        score_threshold,
+        config: MovieConfig,
     ):
         """Retrieve a movie config based on its attributes.
 
         Args:
             movie_id (str): The movie ID.
-            fps (int): Frames per second.
-            width (int): Width of the video.
-            height (int): Height of the video.
-            hue_tolerance (int): Hue tolerance value.
-            max_gap_frames (int): Maximum gap between frames.
-            min_scene_frames (int): Minimum number of frames in a scene.
-            scene_boundary_threshold_ms (int): Scene boundary threshold in milliseconds.
-            score_threshold (int): Score threshold for scene detection.
+            config (MovieConfig): The movie configuration.
 
         Returns:
             tuple: A tuple representing the movie config, or None if not found.
@@ -354,18 +316,21 @@ class DatabaseService:
                 """
                 SELECT *
                 FROM MOVIE_CONFIG
-                WHERE movie_id = ? AND fps = ? AND width = ? AND height = ? AND hue_tolerance = ? AND max_gap_frames = ? AND min_scene_frames = ? AND scene_boundary_threshold_ms = ? AND score_threshold = ?
+                WHERE movie_id = ? AND fps = ? AND width = ? AND height = ? 
+                AND hue_tolerance = ? AND max_gap_frames = ? AND min_scene_frames = ? 
+                AND scene_boundary_threshold_ms = ? AND score_threshold = ? AND colorful_bias = ?
                 """,
                 (
                     movie_id,
-                    fps,
-                    width,
-                    height,
-                    hue_tolerance,
-                    max_gap_frames,
-                    min_scene_frames,
-                    scene_boundary_threshold_ms,
-                    score_threshold,
+                    config.fps,
+                    config.width,
+                    config.height,
+                    config.hue_tolerance,
+                    config.max_gap_frames,
+                    config.min_scene_frames,
+                    config.scene_boundary_threshold_ms,
+                    config.score_threshold,
+                    config.colorful_bias,
                 ),
             )
             config = self.cursor.fetchone()
@@ -469,25 +434,11 @@ class DatabaseService:
         self,
         movie_id: str,
         scenes: List[Scene],
-        fps: int,
-        width: int,
-        height: int,
-        hue_tolerance: int,
-        max_gap_frames: int,
-        min_scene_frames: int,
-        scene_boundary_threshold_ms: int,
-        score_threshold: int,
+        config: MovieConfig,
     ):
         config_id = self.add_movie_config(
             movie_id=movie_id,
-            fps=fps,
-            width=width,
-            height=height,
-            hue_tolerance=hue_tolerance,
-            max_gap_frames=max_gap_frames,
-            min_scene_frames=min_scene_frames,
-            scene_boundary_threshold_ms=scene_boundary_threshold_ms,
-            score_threshold=score_threshold,
+            config=config,
         )
 
         scene_rows = [
@@ -501,51 +452,39 @@ class DatabaseService:
     def add_movie_config(
         self,
         movie_id,
-        fps,
-        width,
-        height,
-        hue_tolerance,
-        max_gap_frames,
-        min_scene_frames,
-        scene_boundary_threshold_ms,
-        score_threshold,
+        config: MovieConfig,
     ):
         """Add a movie config to the MOVIE_CONFIG table.
 
         Args:
             movie_id (str): The movie ID.
-            fps (int): Frames per second.
-            width (int): Width of the video.
-            height (int): Height of the video.
-            hue_tolerance (int): Hue tolerance value.
-            max_gap_frames (int): Maximum gap between frames.
-            min_scene_frames (int): Minimum number of frames in a scene.
-            scene_boundary_threshold_ms (int): Scene boundary threshold in milliseconds.
-            score_threshold (int): Score threshold for scene detection.
+            config (MovieConfig): The movie configuration.
 
         Returns:
             str: The config_id of the newly inserted config, or None if insertion failed.
         """
-
         config_id = DatabaseService._new_id()
 
         try:
             self.cursor.execute(
                 """
-                INSERT INTO MOVIE_CONFIG (config_id, movie_id, fps, width, height, hue_tolerance, max_gap_frames, min_scene_frames, scene_boundary_threshold_ms, score_threshold)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO MOVIE_CONFIG (config_id, movie_id, fps, width, height, 
+                                        hue_tolerance, max_gap_frames, min_scene_frames, 
+                                        scene_boundary_threshold_ms, score_threshold, colorful_bias)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     config_id,
                     movie_id,
-                    fps,
-                    width,
-                    height,
-                    hue_tolerance,
-                    max_gap_frames,
-                    min_scene_frames,
-                    scene_boundary_threshold_ms,
-                    score_threshold,
+                    config.fps,
+                    config.width,
+                    config.height,
+                    config.hue_tolerance,
+                    config.max_gap_frames,
+                    config.min_scene_frames,
+                    config.scene_boundary_threshold_ms,
+                    config.score_threshold,
+                    config.colorful_bias,
                 ),
             )
             self.conn.commit()
@@ -759,6 +698,114 @@ class DatabaseService:
         except sqlite3.Error as e:
             print(f"Error retrieving frame colors: {e}")
             return []
+
+    def get_config_by_id(self, config_id):
+        """Get a movie config by its ID.
+
+        Args:
+            config_id (str): The config ID to find.
+
+        Returns:
+            tuple: Movie config data or None if not found.
+        """
+        try:
+            self.cursor.execute(
+                """
+                SELECT * FROM MOVIE_CONFIG WHERE config_id = ?
+                """,
+                (config_id,),
+            )
+            return self.cursor.fetchone()
+        except sqlite3.Error as e:
+            print(f"Error retrieving movie config: {e}")
+            return None
+
+    def get_all_scenes_by_movie_name(self, name):
+        """Get all scenes for each config of a movie by its name.
+
+        Args:
+            name (str): The name of the movie to find scenes for.
+
+        Returns:
+            list: List of tuples, where each tuple contains the config_id and a list of scenes.
+        """
+        try:
+            self.cursor.execute(
+                """
+                SELECT SCENE.*
+                FROM MOVIE
+                JOIN MOVIE_CONFIG ON MOVIE.movie_id = MOVIE_CONFIG.movie_id
+                JOIN SCENE ON MOVIE_CONFIG.config_id = SCENE.config_id
+                WHERE MOVIE.name = ?
+                """,
+                (name,),
+            )
+            return self.cursor.fetchall()
+        except sqlite3.Error as e:
+            print(f"Error retrieving all scenes for each config: {e}")
+            return []
+
+    def reset_scene_and_config_tables(self):
+        """
+        Drop and recreate the SCENE and MOVIE_CONFIG tables.
+        This will delete all existing scene and config data.
+
+        Returns:
+            bool: True if successful, False otherwise.
+        """
+        try:
+            # Disable foreign key constraints temporarily
+            self.cursor.execute("PRAGMA foreign_keys = OFF")
+
+            # Drop tables in correct order (SCENE depends on MOVIE_CONFIG)
+            self.cursor.execute("DROP TABLE IF EXISTS SCENE")
+            self.cursor.execute("DROP TABLE IF EXISTS MOVIE_CONFIG")
+
+            # Recreate the tables
+            self.cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS MOVIE_CONFIG (
+                    config_id TEXT PRIMARY KEY,
+                    movie_id TEXT NOT NULL,
+                    fps INTEGER NOT NULL,
+                    width INTEGER NOT NULL,
+                    height INTEGER NOT NULL,
+                    hue_tolerance INTEGER NOT NULL,
+                    max_gap_frames INTEGER NOT NULL,
+                    min_scene_frames INTEGER NOT NULL,
+                    scene_boundary_threshold_ms INTEGER NOT NULL,
+                    score_threshold INTEGER NOT NULL,
+                    colorful_bias INTEGER NOT NULL,
+                    FOREIGN KEY (movie_id) REFERENCES MOVIE(movie_id)
+                )
+                """
+            )
+
+            self.cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS SCENE (
+                    scene_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    config_id TEXT NOT NULL,
+                    start INTEGER NOT NULL,
+                    end INTEGER NOT NULL,
+                    red INTEGER NOT NULL,
+                    green INTEGER NOT NULL,
+                    blue INTEGER NOT NULL,
+                    FOREIGN KEY (config_id) REFERENCES MOVIE_CONFIG(config_id)
+                )
+                """
+            )
+
+            # Re-enable foreign key constraints
+            self.cursor.execute("PRAGMA foreign_keys = ON")
+
+            self.conn.commit()
+            print("Scene and Config tables have been reset successfully")
+            return True
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            print(f"Error resetting Scene and Config tables: {e}")
+            return False
 
 
 class MovieNotFoundError(Exception):

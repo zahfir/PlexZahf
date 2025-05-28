@@ -1,5 +1,5 @@
 # Home assistant lighting percentage
-BRIGHTNESS = 50
+BRIGHTNESS = 70
 
 # How often to poll the current position for scene/light changes
 PLAYBACK_POLL_INTERVAL_SEC = 0.2
@@ -18,6 +18,11 @@ FPS = 5
 
 # Lighting instruction settings
 HUE_TOLERANCE = 5
-MIN_SCENE_FRAMES = 35
-MAX_GAP_FRAMES = 10
-SCORE_THRESHOLD = 50
+MIN_SCENE_FRAMES = 20
+MAX_GAP_FRAMES = 20
+SCORE_THRESHOLD = 100
+
+# Exponential bias for more colorful scenes
+# Penalizes white/black scenes and frames
+# 1 = no penalty
+COLORFUL_BIAS = 25

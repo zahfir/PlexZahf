@@ -42,6 +42,29 @@ class Scene:
         self.color = list(color)
         self.array_index = array_index
 
+    @staticmethod
+    def ms_to_mmss(ms: int) -> str:
+        """
+        Convert milliseconds to MM:SS format.
+
+        Args:
+            ms: Time in milliseconds
+
+        Returns:
+            String in MM:SS format
+        """
+        total_seconds = ms // 1000
+        minutes = total_seconds // 60
+        seconds = total_seconds % 60
+        return f"{minutes:02d}:{seconds:02d}"
+
+    @property
+    def time_range_mmss(self) -> str:
+        """Return the scene's time range in MM:SS format."""
+        start_mmss = self.ms_to_mmss(self.start)
+        end_mmss = self.ms_to_mmss(self.end)
+        return f"{start_mmss} - {end_mmss}"
+
     def to_json(self):
         return {
             "start": self.start,
@@ -51,4 +74,4 @@ class Scene:
         }
 
     def __repr__(self):
-        return f"Scene(i={self.array_index}, start={self.start}, end={self.end}, color={self.color}"
+        return f"Scene(i={self.array_index}, start={self.start}, end={self.end}, color={self.color}, timerange={self.time_range_mmss})"

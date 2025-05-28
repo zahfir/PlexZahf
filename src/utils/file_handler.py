@@ -6,7 +6,11 @@ import av
 import numpy as np
 
 from constants import FPS, HEIGHT, WIDTH
-from utils.logger import logger
+from utils.logger import LOGGER_NAME
+
+import logging
+
+logger = logging.getLogger(LOGGER_NAME)
 
 
 class FileHandler:

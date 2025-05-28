@@ -1,3 +1,4 @@
+import logging
 from io import BytesIO
 import time
 from typing import List, Optional
@@ -5,27 +6,30 @@ from typing import List, Optional
 import numpy as np
 
 from constants import (
+    COLORFUL_BIAS,
     FPS,
     HEIGHT,
     HUE_TOLERANCE,
     MAX_GAP_FRAMES,
     MIN_SCENE_FRAMES,
-    SCENE_BOUNDARY_THRESHOLD_MS,
     SCORE_THRESHOLD,
     WIDTH,
 )
 from lighting_schedule import LightingSchedule
+from config.movie_config import MovieConfig
 from utils.db.database_service import (
     ConfigNotFoundError,
     DatabaseService,
     MovieNotFoundError,
 )
 from utils.file_handler import FileHandler
-from utils.logger import logger
+from utils.logger import LOGGER_NAME
 from scene import Scene
 from frame.frame_analysis import FrameAnalysis
 
 from concurrent.futures import ProcessPoolExecutor
+
+logger = logging.getLogger(LOGGER_NAME)
 
 
 class Movie:
@@ -37,14 +41,16 @@ class Movie:
         scenes: List of Scene objects
     """
 
-    def __init__(self, path: str, name: str = ""):
+    def __init__(self, path: str, movie_config: MovieConfig, name: str = ""):
         """
         Initialize a Movie object.
 
         Args:
             path: Path to the movie file
         """
+
         self.path = path
+        self.movie_config = movie_config
         self.name = name
         self._id = None  # Database id
         self.frame_colors: List[dict] = []  # Types: dicts + np arrays
@@ -58,14 +64,7 @@ class Movie:
                 self.frame_colors = db.load_movie_frame_colors(self._id)
                 self.scenes = db.load_movie_schedule(
                     self._id,
-                    FPS,
-                    WIDTH,
-                    HEIGHT,
-                    HUE_TOLERANCE,
-                    MAX_GAP_FRAMES,
-                    MIN_SCENE_FRAMES,
-                    SCENE_BOUNDARY_THRESHOLD_MS,
-                    SCORE_THRESHOLD,
+                    self.movie_config,
                 )
 
             except MovieNotFoundError:
@@ -91,14 +90,7 @@ class Movie:
             db.save_schedule(
                 self._id,
                 self.scenes,
-                FPS,
-                WIDTH,
-                HEIGHT,
-                HUE_TOLERANCE,
-                MAX_GAP_FRAMES,
-                MIN_SCENE_FRAMES,
-                SCENE_BOUNDARY_THRESHOLD_MS,
-                SCORE_THRESHOLD,
+                self.movie_config,
             )
 
     def _download_movie(self) -> BytesIO:
@@ -122,7 +114,9 @@ class Movie:
             ):
                 self.frame_colors.extend(batch_results)
 
-        print("File analysis - extract colors time: ", time.time() - start)
+        logger.info(
+            f"TIME - concurrent workers read memfile, process frame data, extract colors: {time.time() - start:.2f} seconds"
+        )
 
     def analyse(self):
         """
@@ -139,12 +133,29 @@ class Movie:
             self.save_file_to_db()
 
         if not self.scenes:
-            lighting_schedule = self.frame_colors_to_schedule(self.frame_colors)
-            self.scenes = self.schedule_to_connected_scenes(lighting_schedule)
+            self.frame_colors_to_connected_scenes()
             self.save_scenes_to_db()
 
-    def frame_colors_to_schedule(self, frame_colors):
+    def frame_colors_to_connected_scenes(self):
+        """
+        Find lighting instructions in the frame colors.
+        This method is used to find the lighting schedule for the movie.
+        """
+        self.instructions = Movie.frame_colors_to_instructions(self.frame_colors)
+        self.lighting_schedule = Movie.instructions_to_schedule(self.instructions)
+        self.scenes = Movie.schedule_to_connected_scenes(self.lighting_schedule)
+
+    @staticmethod
+    def frame_colors_to_instructions(frame_colors):
+        """
+        Find lighting instructions in the frame colors.
+        This method is used to find the lighting schedule for the movie.
+        """
         instructions = []
+        starttime = time.time()
+        logger.info(
+            "Finding lighting instructions in frame colors, this may take a while..."
+        )
         for hue in range(180):
             instructions.extend(
                 LightingSchedule.find_lighting_instructions(
@@ -154,16 +165,27 @@ class Movie:
                     min_duration=MIN_SCENE_FRAMES,
                     max_gap=MAX_GAP_FRAMES,
                     min_avg_score=SCORE_THRESHOLD,
+                    colorful_bias=COLORFUL_BIAS,
                 )
             )
 
+        logger.info(
+            f"TIME - finding lighting instructions for {len(frame_colors)} frames: {time.time() - starttime:.2f} seconds"
+        )
+
+        return instructions
+
+    @staticmethod
+    def instructions_to_schedule(instructions):
         return LightingSchedule.greedy_schedule_from_heap(instructions)
 
-    def schedule_to_connected_scenes(self, lighting_schedule) -> List[Scene]:
+    @staticmethod
+    def schedule_to_connected_scenes(lighting_schedule) -> List[Scene]:
         scenes = Movie.scenes_from_schedule(lighting_schedule)
         connected = Movie.connect_scene_schedule(scenes)
         for i in range(len(connected)):
             connected[i].array_index = i
+            logger.debug(f"Created Scene {i}: {connected[i]}")
         return connected
 
     @staticmethod
@@ -181,7 +203,7 @@ class Movie:
 
     @staticmethod
     def connect_scene_schedule(scenes: List[Scene]) -> List[Scene]:
-        """Adds 'dark' scenes in large gaps between scenes and connects close scenes"""
+        """Adds 'dark' scenes in gaps between scenes"""
         n = len(scenes)
 
         if n == 1:
@@ -191,13 +213,7 @@ class Movie:
         for i in range(n - 1):
             cur, nxt = scenes[i], scenes[i + 1]
             connected_scenes.append(cur)
-
-            gap_ms = nxt.start - cur.end
-
-            if gap_ms > SCENE_BOUNDARY_THRESHOLD_MS * 2:
-                connected_scenes.append(Movie._dark_filler_scene(cur, nxt))
-                continue
-            cur.end = nxt.start
+            connected_scenes.append(Movie._dark_filler_scene(cur, nxt))
 
         connected_scenes.append(scenes[-1])
         return connected_scenes

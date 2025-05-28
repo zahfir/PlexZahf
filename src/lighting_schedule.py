@@ -1,6 +1,8 @@
 import numpy as np
 import heapq
 
+from utils.color.color_utils import whiteness_level
+
 
 class LightingSchedule:
     # -----------------------------
@@ -15,7 +17,8 @@ class LightingSchedule:
     # Step 1: Compute frame score
     # -----------------------------
     @classmethod
-    def compute_frame_score(cls, frame, target_hue, hue_tol):
+    def compute_frame_score(cls, frame, target_hue, hue_tol, bias):
+        rgbs = frame["colors"]
         hues = frame["hues"]
         sats = frame["saturations"]
         props = frame["proportions"]
@@ -26,24 +29,50 @@ class LightingSchedule:
         if not np.any(mask):
             return 0.0
 
-        # Weighted scoring: emphasize prominent + saturated colors
-        return np.sum((props[mask] ** 1.5) * sats[mask])
+        # Calculate the weighted score
+        passing_props = props[mask]
+        passing_sats = sats[mask] ** bias
+        passing_rgbs = rgbs[mask]
+        whiteness = np.array([whiteness_level(rgb) ** bias for rgb in passing_rgbs])
+
+        return np.sum(passing_props * passing_sats / whiteness)
 
     # -----------------------------
     # Step 2: Compute presence array
     # -----------------------------
     @classmethod
-    def compute_hue_presence(cls, frame_colors, target_hue, hue_tol):
+    def compute_hue_presence(
+        cls,
+        frame_colors,
+        target_hue,
+        hue_tol,
+        min_proportion=0.10,
+        min_saturation=100,
+        min_brightness=100,
+    ):
         presence = []
         for frame in frame_colors:
+            rgbs = frame["colors"]
             hues = frame["hues"]
             props = frame["proportions"]
+            sats = frame["saturations"]
 
             dist = cls.hue_distance(hues, target_hue)
 
             proportion = sum(prop for diff, prop in zip(dist, props) if diff <= hue_tol)
+            saturation = max(
+                (sat for diff, sat in zip(dist, sats) if diff <= hue_tol), default=0
+            )
+            brightness = max(
+                (max(rgb) for diff, rgb in zip(dist, rgbs) if diff <= hue_tol),
+                default=0,
+            )
 
-            presence.append(proportion > 0.5)
+            presence.append(
+                proportion > min_proportion
+                and saturation >= min_saturation
+                and brightness >= min_brightness
+            )
 
         return np.array(presence, dtype=np.uint8)
 
@@ -143,11 +172,12 @@ class LightingSchedule:
     # -----------------------------
     @classmethod
     def get_most_dominant_rgb_in_range(
-        cls, frame_colors, start, end, target_hue, hue_tol
+        cls, frame_colors, start, end, target_hue, hue_tol, bias
     ):
         rgb_sum = np.zeros(3)
         total_weight = 0
 
+        # Iterate over streak frames to get average RGB color
         for i in range(start, end + 1):
             frame = frame_colors[i]
             hues = frame["hues"]
@@ -157,9 +187,17 @@ class LightingSchedule:
             dists = cls.hue_distance(hues, target_hue)
             mask = dists <= hue_tol
 
+            # Filter out colors that are not in the hue range
+            # and calculate the weighted average RGB color
             for idx in np.where(mask)[0]:
-                rgb_sum += colors[idx] * props[idx]
-                total_weight += props[idx]
+                whiteness = whiteness_level(colors[idx])
+                # Raise to a power if penalty on white colors needs to be more extreme
+                whiteness_weight = (1.0 - whiteness) ** bias
+
+                weight = props[idx] * whiteness_weight
+
+                rgb_sum += colors[idx] * weight
+                total_weight += weight
 
         if total_weight == 0:
             return (0, 0, 0)
@@ -170,11 +208,13 @@ class LightingSchedule:
     # Step 6: Generate light instructions
     # -----------------------------
     @classmethod
-    def generate_lighting_schedule(cls, frame_colors, streaks, target_hue, hue_tol):
+    def generate_lighting_schedule(
+        cls, frame_colors, streaks, target_hue, hue_tol, colorful_bias
+    ):
         instructions = []
         for start, end, score in streaks:
             rgb = cls.get_most_dominant_rgb_in_range(
-                frame_colors, start, end, target_hue, hue_tol
+                frame_colors, start, end, target_hue, hue_tol, colorful_bias
             )
             instructions.append(
                 {"start": start, "end": end, "color": rgb, "score": round(score, 3)}
@@ -193,16 +233,30 @@ class LightingSchedule:
         min_duration=5,
         max_gap=2,
         min_avg_score=0.1,
+        colorful_bias=2,
     ):
         presence = cls.compute_hue_presence(frame_colors, target_hue, hue_tol)
-        scores = [cls.compute_frame_score(f, target_hue, hue_tol) for f in frame_colors]
+
+        scores = [
+            cls.compute_frame_score(f, target_hue, hue_tol, colorful_bias)
+            for f in frame_colors
+        ]
+
         streaks = cls.extract_scored_streaks(
             scores, presence, min_duration, max_gap, min_avg_score
         )
+
         best_streaks = cls.select_optimal_streaks(streaks)
-        return cls.generate_lighting_schedule(
-            frame_colors, best_streaks, target_hue, hue_tol
+
+        schedule = cls.generate_lighting_schedule(
+            frame_colors,
+            best_streaks,
+            target_hue,
+            hue_tol,
+            colorful_bias,
         )
+
+        return schedule
 
     # -----------------------------
     # Interface function

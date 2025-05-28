@@ -2,7 +2,11 @@ import time
 from typing import Callable
 
 from plex.plex_progress_tracker import PlexProgressTracker
-from utils.logger import logger
+from utils.logger import LOGGER_NAME
+
+import logging
+
+logger = logging.getLogger(LOGGER_NAME)
 
 
 class PlaybackSimulator:

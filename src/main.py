@@ -17,113 +17,47 @@ from constants import (
     PLAYBACK_POLL_INTERVAL_SEC,
     SCENE_BOUNDARY_THRESHOLD_MS,
 )
-from utils.logger import logger
+from config.movie_config import MovieConfig
+from utils.logger import LOGGER_NAME
 
-load_dotenv()
+import logging
+
+logger = logging.getLogger(LOGGER_NAME)
 
 
 class Main:
-    # def drop_all_tables(conn, cursor):
-    #     """Drop all tables in the database.
-
-    #     Returns:
-    #         bool: True if successful, False otherwise
-    #     """
-    #     tables = ["FRAME_COLOR", "SCENE", "FRAME", "MOVIE_CONFIG", "MOVIE"]
-
-    #     try:
-    #         # Temporarily disable foreign key constraints
-    #         cursor.execute("PRAGMA foreign_keys = OFF")
-
-    #         # Drop tables in reverse order to handle dependencies
-    #         for table in tables:
-    #             cursor.execute(f"DROP TABLE IF EXISTS {table}")
-    #             print(f"Table '{table}' dropped")
-
-    #         # Re-enable foreign key constraints
-    #         cursor.execute("PRAGMA foreign_keys = ON")
-    #         conn.commit()
-    #         print("All tables dropped successfully")
-    #         return True
-    #     except:
-    #         return
-
-    # def get_table_counts(cursor):
-    #     """Get the number of rows in each table.
-
-    #     Returns:
-    #         dict: Dictionary with table names as keys and row counts as values.
-    #     """
-    #     tables = ["MOVIE", "FRAME", "SCENE", "MOVIE_CONFIG", "FRAME_COLOR"]
-    #     counts = {}
-
-    #     try:
-    #         for table in tables:
-    #             cursor.execute(f"SELECT COUNT(*) FROM {table}")
-    #             count = cursor.fetchone()[0]
-    #             counts[table] = count
-
-    #         return counts
-    #     except:
-    #         return
-
-    # db = DatabaseService()
-    # db._create_tables()
-
-    # if os.path.exists("birdman_frame_colors.pkl"):
-    #     with open("birdman_frame_colors.pkl", "rb") as f:
-    #         import pickle
-
-    #         frame_colors = pickle.load(f)
-
-    # if os.path.exists("birdman_schedule.pkl"):
-    #     with open("birdman_schedule.pkl", "rb") as f:
-    #         import pickle
-
-    #         lighting_schedule = pickle.load(f)
-
-    # # movie_id = db.save_file("birdman", frame_colors)
-
-    # movie_id = db.load_movie("birdman")
-    # recon = db.load_movie_frame_colors(movie_id)
-    # pickle_scenes = Movie("").schedule_to_connected_scenes(lighting_schedule)
-    # config_id = db.save_schedule(movie_id, pickle_scenes)
-
-    # Plex
-    PLEX_USERNAME = os.getenv("PLEX_USERNAME")
-    PLEX_PASSWORD = os.getenv("PLEX_PASSWORD")
-    PLEX_SERVER = os.getenv("PLEX_SERVER")
-    PLEX_TOKEN = os.getenv("PLEX_TOKEN")
-    PLEX_SERVER_ADDRESS = os.getenv("PLEX_SERVER_ADDRESS")
-
-    # Home Assistant configuration
-    HASS_URL = os.getenv("HASS_URL")
-    ACCESS_TOKEN = os.getenv("HASS_ACCESS_TOKEN")
-
-    def __init__(self):
-        self.plex_service = PlexService(
-            username=Main.PLEX_USERNAME,
-            secret=Main.PLEX_PASSWORD,
-            server=Main.PLEX_SERVER,
-        )
-
-        self.home_assistant = HomeAssistant(Main.HASS_URL, Main.ACCESS_TOKEN)
-
+    def __init__(self, plex_service: PlexService, home_assistant: HomeAssistant):
+        self.plex_service = plex_service
+        self.home_assistant = home_assistant
         self.tracker: PlexProgressTracker | None = None
-
-        # State variable - Scene used for current lighting
+        self.simulator: PlaybackSimulator | None = None
+        self.movie: Movie = None
+        self.movie_config: MovieConfig = None
+        # State variables
         self.current_lighting: Scene = None
-
         self.is_syncing_lights: bool = False
-
         self.brightness_pct: int = BRIGHTNESS
+        self.running: bool = False
 
     def _toggle_sync_lights(self) -> bool:
         self.is_syncing_lights = not self.is_syncing_lights
+        if self.is_syncing_lights:
+            logger.info("is_syncing_lights is toggled ON")
+            self.change_to_scene(self.current_lighting)
+        else:
+            logger.info("is_syncing_lights is toggled OFF")
         return self.is_syncing_lights
 
     def _set_brightness_pct(self, brightness) -> int:
         self.brightness_pct = brightness
+        if self.current_lighting:
+            logger.info(
+                f"Manual brightness change {self.brightness_pct}% for current scene: {self.current_lighting}"
+            )
+            self.home_assistant.set_living_room_lights_color(
+                rgb_color=self.current_lighting.color,
+                brightness_pct=self.brightness_pct,
+            )
         return self.brightness_pct
 
     def on_position_change(self, position_ms):
@@ -145,14 +79,13 @@ class Main:
         logger.warning(f"JUMP/SEEK to {position_ms}")
         self.current_lighting = None
         new_scene = self.movie.get_scene_at_time(position_ms)
-        # TODO CHANGE TO new_scene.next if position is nearing_end of new_scene
         self.change_to_scene(new_scene)
 
-    def extract_frames_in_background(self):
+    def process_video_in_background(self):
         """Run frame extraction in background thread"""
-        logger.info("Starting frame extraction in background thread")
+        logger.info("Starting video processing in background thread")
         self.movie.analyse()
-        logger.info("Frame extraction completed")
+        logger.info("Video processing completed")
 
     def change_lights_to_match_scene(self, scene: Scene):
         if self.is_syncing_lights:
@@ -170,7 +103,6 @@ class Main:
 
     def handle_scene_boundary(self, position_ms):
         """Called often. Changes lights preemptively as playback nears the end of a scene."""
-        logger.debug(f"{position_ms}ms")
         curr = self.current_lighting
         if curr:
             nearing_end_of_scene = curr.end - position_ms < SCENE_BOUNDARY_THRESHOLD_MS
@@ -179,49 +111,61 @@ class Main:
                 self.change_to_scene(next_scene)
 
     def start(self):
-        # Get the stream URL
-        stream_url = self.plex_service.get_stream_url_by_username(Main.PLEX_USERNAME)
-        if not stream_url:
-            logger.error("No active session found for this user")
-            return
-
-        logger.info(f"Found stream URL: {stream_url}")
-
-        # Create a movie from a file
-        self.movie = Movie(stream_url, self.plex_service.session._prettyfilename())
-
-        # Start frame extraction in a separate thread
+        # Video processing
         extraction_thread = Thread(
-            target=self.extract_frames_in_background,
-            name="FrameExtractionThread",
+            target=self.process_video_in_background,
+            name="VideoProcessingThread",
             daemon=True,
         )
         extraction_thread.start()
 
-        # Continue with tracker setup without waiting for extraction to complete
-        self.tracker = PlexProgressTracker(self.plex_service, Main.PLEX_USERNAME)
+        # Position tracking
+        self.tracker = PlexProgressTracker(
+            self.plex_service, self.plex_service.username
+        )
         self.simulator = PlaybackSimulator(self.tracker)
         self.simulator.add_callback(self.on_position_change)
-
-        # Start the tracker
         self.tracker.start()
 
-        # Start syncing lights
         self.is_syncing_lights = True
-
+        self.running: bool = True
         try:
             # Keep main thread alive
-            while True:
+            while self.running:
                 time.sleep(PLAYBACK_POLL_INTERVAL_SEC)
-                self.handle_scene_boundary(self.simulator.current_position_ms)
+                if self.simulator and self.running:
+                    self.handle_scene_boundary(self.simulator.current_position_ms)
         except KeyboardInterrupt:
             logger.info("Program interrupted by user")
+        except Exception as e:
+            logger.error(f"An error occurred: {e}")
+            self.running = False
         finally:
-            # Clean up
-            if self.tracker:
-                self.tracker.stop()
+            self.stop()
 
+    def stop(self):
+        """
+        Stop the main service and clean up resources.
+        """
+        logger.info("Stopping Main service")
+        self.running = False  # Signal the main loop to exit
 
-# Run the function with a video stream
-if __name__ == "__main__":
-    Main().start()
+        if self.tracker:
+            self.tracker.stop()
+            self.tracker = None
+
+        self.simulator = None
+        self.is_syncing_lights = False
+        self.current_lighting = None
+        logger.info("Main service stopped")
+
+    def run(self, movie: Movie, movie_config: MovieConfig, brightness: int):
+        """
+        Run from controller.py.
+
+        """
+        self.movie = movie
+        self.movie_config = movie_config
+        self.brightness_pct = brightness
+
+        self.start()
