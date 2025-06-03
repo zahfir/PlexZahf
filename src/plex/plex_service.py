@@ -1,5 +1,9 @@
 from plexapi.myplex import MyPlexAccount
 from plexapi.server import PlexServer
+import logging
+from utils.logger import LOGGER_NAME
+
+logger = logging.getLogger(LOGGER_NAME)
 
 
 class PlexService:
@@ -65,7 +69,7 @@ class PlexService:
             URL string for the transcoded media stream
         """
         if session:
-            return session.getStreamURL()
+            return self.get_direct_file_url(session) or session.getStreamURL()
 
     def get_stream_url_by_username(self, username: str) -> str | None:
         """
@@ -81,6 +85,32 @@ class PlexService:
         if not session:
             return None
         return self.get_stream_url(session, "128", "320x240")
+
+    def get_direct_file_url(self, session) -> str | None:
+        """
+        Get the direct file URL for the given session.
+
+        Args:
+            session: The Plex session object
+
+        Returns:
+            URL string for the direct media file or None if not available
+        """
+        try:
+            # Search for the media in the session
+            query: str = session._prettyfilename()
+            # if query ends with a year, remove it
+            if query.endswith(")"):
+                query = query[:-7]
+
+            search_results = self.server.search(query=query)
+
+            file_key = search_results[0].media[0].parts[0].key
+
+            return self.server.url(file_key, includeToken=True)
+        except Exception as e:
+            logger.info(f"Couldn't get direct file URL: {e}")
+            return None
 
     def now_playing(self):
         """

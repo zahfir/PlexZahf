@@ -3,10 +3,10 @@ import numpy as np
 from sklearn.cluster import MiniBatchKMeans
 import matplotlib.pyplot as plt
 
-from constants import COLORS_PER_FRAME
+from constants import COLORS_PER_FRAME, PIXEL_SAMPLE_SIZE
 from utils.color.color_utils import get_color_hsv_metrics
 
-PIXEL_SAMPLE_SIZE = 1000
+
 RANDOM_STATE = 42
 
 

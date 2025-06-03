@@ -9,6 +9,7 @@ SCENE_BOUNDARY_THRESHOLD_MS = 2000
 
 # KMeans clustering settings
 COLORS_PER_FRAME = 5
+PIXEL_SAMPLE_SIZE = 1000
 
 # FFMPEG transcode settings
 WIDTH = 80

@@ -12,11 +12,13 @@ from constants import (
     HUE_TOLERANCE,
     MAX_GAP_FRAMES,
     MIN_SCENE_FRAMES,
+    PIXEL_SAMPLE_SIZE,
     SCORE_THRESHOLD,
     WIDTH,
 )
 from lighting_schedule import LightingSchedule
 from config.movie_config import MovieConfig
+from go_bridge.go_frame_colors import GoFrameColors
 from utils.db.database_service import (
     ConfigNotFoundError,
     DatabaseService,
@@ -99,6 +101,17 @@ class Movie:
         return FileHandler.read_stream_to_memory(process)
 
     def download_movie_and_extract_frames(self):
+        """Uses Go (falls back on Python) to get frame colors"""
+        go_response = GoFrameColors().video_to_frame_colors(
+            self.path,
+            sample_rate=self.movie_config.fps,
+            pixels_per_frame=PIXEL_SAMPLE_SIZE,
+        )
+
+        if go_response:
+            self.frame_colors = go_response
+            return
+
         memfile: BytesIO = self._download_movie()
         if not memfile:
             logger.error("Failed to download movie.")

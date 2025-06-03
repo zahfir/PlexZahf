@@ -3,6 +3,8 @@ logs
 __pycache__
 .env
 *.mp4
+*.mkv
 *.pkl
 *.mpegts
 database.db
+/results

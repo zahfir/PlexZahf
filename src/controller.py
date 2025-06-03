@@ -210,3 +210,9 @@ class Controller:
         self.home_assistant = None
 
         return {"status": "success", "message": "Session ended successfully."}
+
+
+if __name__ == "__main__":
+    controller = Controller()
+    result = controller.init_plex_service()
+    print(result)
