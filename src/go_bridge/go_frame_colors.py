@@ -102,10 +102,3 @@ class GoFrameColors:
             frame["saturations"] = np.array(frame["saturations"])
 
         return results
-
-
-# Example usage
-if __name__ == "__main__":
-    analyzer = GoFrameColors()
-    results = analyzer.video_to_frame_colors(video_path="2160clip.mkv")
-    print(f"Analyzed {len(results)} frames")

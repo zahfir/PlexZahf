@@ -55,7 +55,7 @@ class Main:
                 f"Manual brightness change {self.brightness_pct}% for current scene: {self.current_lighting}"
             )
             self.home_assistant.set_living_room_lights_color(
-                rgb_color=self.current_lighting.color,
+                color=self.current_lighting.color,
                 brightness_pct=self.brightness_pct,
             )
         return self.brightness_pct
@@ -91,7 +91,7 @@ class Main:
         if self.is_syncing_lights:
             logger.info(f"Changing lights: {scene}")
             self.home_assistant.set_living_room_lights_color(
-                rgb_color=scene.color,
+                color=scene.color,
                 brightness_pct=self.brightness_pct,
             )
 

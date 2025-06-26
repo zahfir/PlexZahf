@@ -11,17 +11,17 @@ SCENE_BOUNDARY_THRESHOLD_MS = 2000
 COLORS_PER_FRAME = 5
 PIXEL_SAMPLE_SIZE = 1000
 
-# FFMPEG transcode settings
-WIDTH = 80
-HEIGHT = 60
+# FFMPEG transcode settings (these are hardcoded in Go module)
+WIDTH = 426
+HEIGHT = 240
 FPS = 5
 
 
 # Lighting instruction settings
-HUE_TOLERANCE = 5
+HUE_TOLERANCE = 1
 MIN_SCENE_FRAMES = 20
 MAX_GAP_FRAMES = 20
-SCORE_THRESHOLD = 100
+SCORE_THRESHOLD = 1200
 
 # Exponential bias for more colorful scenes
 # Penalizes white/black scenes and frames

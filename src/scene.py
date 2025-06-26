@@ -26,7 +26,7 @@ class Scene:
         Args:
             start: Start time in milliseconds
             end: End time in milliseconds
-            color: RGB color as a list or tuple of 3 integers (0-255)
+            color: Hue (0 - 179) at [0] iff [1] < 0 and [2] < 0 or RGB as a list or tuple of 3 integers (0-255)
 
         Raises:
             ValueError: If end time is not after start time or if color format is invalid
@@ -57,6 +57,15 @@ class Scene:
         minutes = total_seconds // 60
         seconds = total_seconds % 60
         return f"{minutes:02d}:{seconds:02d}"
+
+    @staticmethod
+    def pad_hue_to_triple(hue: int) -> List[int]:
+        """
+        Helper util to make a hue value (0-179) look like an RGB triple.
+        """
+        if not (0 <= hue <= 179):
+            raise ValueError("Hue must be between 0 and 179")
+        return [hue, -1, -1]
 
     @property
     def time_range_mmss(self) -> str:

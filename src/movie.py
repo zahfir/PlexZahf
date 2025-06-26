@@ -19,6 +19,7 @@ from constants import (
 from lighting_schedule import LightingSchedule
 from config.movie_config import MovieConfig
 from go_bridge.go_frame_colors import GoFrameColors
+from hue_streak_detector import HueStreakDetector
 from utils.db.database_service import (
     ConfigNotFoundError,
     DatabaseService,
@@ -154,8 +155,14 @@ class Movie:
         Find lighting instructions in the frame colors.
         This method is used to find the lighting schedule for the movie.
         """
-        self.instructions = Movie.frame_colors_to_instructions(self.frame_colors)
-        self.lighting_schedule = Movie.instructions_to_schedule(self.instructions)
+        self.lighting_schedule = HueStreakDetector(
+            self.movie_config
+        ).detect_top_streaks(self.frame_colors)
+
+        if not self.lighting_schedule:
+            instructions = Movie.frame_colors_to_instructions(self.frame_colors)
+            self.lighting_schedule = Movie.instructions_to_schedule(instructions)
+
         self.scenes = Movie.schedule_to_connected_scenes(self.lighting_schedule)
 
     @staticmethod
@@ -206,6 +213,7 @@ class Movie:
         scenes = []
         for light_event in lighting_schedule:
             scenes.append(
+                # Convert start and end times from frame indices to milliseconds
                 Scene(
                     start=int((light_event["start"] / FPS) * 1000),
                     end=int((light_event["end"] / FPS) * 1000),

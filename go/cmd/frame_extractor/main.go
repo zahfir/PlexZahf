@@ -274,6 +274,7 @@ func (vp *VideoProcessor) createGPUProcessedTempFile() (string, error) {
 	args := []string{
 		"-hwaccel", "cuda",
 		"-hwaccel_output_format", "cuda",
+		"-progress", "pipe:2",
 	}
 
 	// Add time range if specified (reusing your existing code)
@@ -570,12 +571,6 @@ ProcessingComplete:
 }
 
 func main() {
-
-	// videoURL := "2160clip.mkv"
-	// videoURL := "Avatar_ The Last Airbender S1 _ Episode 1 _ The Boy in the Iceberg.mp4"
-	// videoURL := "Legend.of.Korra.S01E04.The.Voice.in.the.Night.720p.BluRay.x264-Pahe.in.mkv"
-	// videoURL := "***REMOVED***"
-
 	// Define command line flags
 	videoPath := flag.String("video", "", "Path to video file (local or URL)")
 	outputDir := flag.String("output", "./results", "Directory to save analysis results")

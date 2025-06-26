@@ -64,25 +64,36 @@ class HomeAssistant:
 
     def set_living_room_lights_color(
         self,
-        rgb_color: Union[List[int], Tuple[int, int, int]],
+        color: Union[List[int], Tuple[int, int, int]],
         brightness_pct: int | None = None,
     ) -> None:
         """Set the color of both living room lights."""
 
-        dark_scene = rgb_color[0] < 0
+        dark_scene = color[0] <= 0
         if dark_scene:
             return
-            # return self.dim_and_color(rgb_color)
 
         client = self._get_client()
-        if brightness_pct is not None:
+
+        is_hue = color[0] >= 0 and color[1] < 0 and color[2] < 0
+        if is_hue:
+            hue = color[0] * 2  # 0-360
+            sat = 100
             return client.trigger_service(
                 "light",
                 "turn_on",
                 entity_id=self.living_room_lights,
-                rgb_color=rgb_color,
+                hs_color=[hue, sat],
                 brightness_pct=brightness_pct,
             )
+
+        return client.trigger_service(
+            "light",
+            "turn_on",
+            entity_id=self.living_room_lights,
+            rgb_color=color,
+            brightness_pct=brightness_pct,
+        )
 
     def _get_brightness_pct_from_light_state(self, light_state) -> int:
         try:
