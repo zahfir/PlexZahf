@@ -274,7 +274,6 @@ func (vp *VideoProcessor) createGPUProcessedTempFile() (string, error) {
 	args := []string{
 		"-hwaccel", "cuda",
 		"-hwaccel_output_format", "cuda",
-		"-progress", "pipe:2",
 	}
 
 	// Add time range if specified (reusing your existing code)
@@ -524,7 +523,7 @@ func (vp *VideoProcessor) ProcessFramesWithGPU(ctx context.Context) error {
 			defer bufferPool.Put(buffer) // Return buffer to pool when done
 
 			// Process frame using existing code
-			analysis := imageproc.GetTopColors(buffer.data, vp.width, vp.height, 5000, 5)
+			analysis := imageproc.GetTopColors(buffer.data, vp.width, vp.height, vp.PixelsPerFrame, int(vp.framerate))
 
 			// Calculate frame details
 			result := FrameResult{
@@ -577,7 +576,7 @@ func main() {
 	startTime := flag.String("start", "", "Start time (format: HH:MM:SS)")
 	endTime := flag.String("end", "", "End time (format: HH:MM:SS)")
 	sampleRate := flag.Int("sample-rate", 5, "Process every Nth frame")
-	pixelsPerFrame := flag.Int("pixels", 1000, "Number of random pixels to sample per frame")
+	pixelsPerFrame := flag.Int("pixels", 5000, "Number of random pixels to sample per frame")
 
 	flag.Parse()
 

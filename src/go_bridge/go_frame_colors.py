@@ -3,6 +3,10 @@ import json
 import os
 from typing import Dict, Any, List
 import numpy as np
+from logging import getLogger
+from utils.logger import LOGGER_NAME
+
+logger = getLogger(LOGGER_NAME)
 
 
 class GoFrameColors:
@@ -23,7 +27,7 @@ class GoFrameColors:
         start_time: str | None = None,
         end_time: str | None = None,
         sample_rate: int = 5,
-        pixels_per_frame: int = 1000,
+        pixels_per_frame: int = 5000,
     ) -> List[dict]:
         """Analyze video colors using the Go frame extractor.
 
@@ -61,17 +65,17 @@ class GoFrameColors:
 
         # Run Go executable
         try:
-            print(f"Running: {' '.join(cmd)}")
+            logger.info(f"Running: {' '.join(cmd)}")
             result = subprocess.run(cmd, check=True, text=True, capture_output=True)
-            print(f"Go process completed with exit code {result.returncode}")
+            logger.info(f"Go process completed with exit code {result.returncode}")
 
             # For debugging
             if result.stderr:
-                print(f"STDERR output:\n{result.stderr}")
+                logger.error(f"STDERR output:\n{result.stderr}")
 
         except subprocess.CalledProcessError as e:
-            print(f"Error running Go executable: {e}")
-            print(f"STDERR: {e.stderr}")
+            logger.error(f"Error running Go executable: {e}")
+            logger.error(f"STDERR: {e.stderr}")
             raise
 
         # Read results from the JSON file
