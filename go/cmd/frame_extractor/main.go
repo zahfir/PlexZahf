@@ -228,27 +228,38 @@ func parseTimeString(timeStr string) (float64, error) {
 	return 0, fmt.Errorf("invalid time format: %s", timeStr)
 }
 
-// readFullFrame reads a complete frame, handling partial reads
-func readFullFrame(reader io.Reader, buffer []byte, ctx context.Context) (int, error) {
+func readFullFrameSafe(reader io.Reader, buffer []byte, ctx context.Context) (int, error) {
 	totalRead := 0
+	chunkSize := 16 * 1024 // Read in 16KB chunks
+
 	for totalRead < len(buffer) {
-		// Check if context is canceled
 		select {
 		case <-ctx.Done():
+			log.Printf("[WARN] Context done while reading frame: read %d/%d", totalRead, len(buffer))
 			return totalRead, ctx.Err()
 		default:
 		}
 
-		n, err := reader.Read(buffer[totalRead:])
+		readLen := chunkSize
+		if remaining := len(buffer) - totalRead; remaining < chunkSize {
+			readLen = remaining
+		}
+
+		n, err := reader.Read(buffer[totalRead : totalRead+readLen])
+		if n > 0 {
+			totalRead += n
+		}
+
 		if err != nil {
+			if err == io.EOF {
+				log.Printf("[INFO] EOF reached mid-frame: %d/%d bytes", totalRead, len(buffer))
+			} else {
+				log.Printf("[ERROR] Read error after %d bytes: %v", totalRead, err)
+			}
 			return totalRead, err
 		}
-		if n == 0 {
-			// No data read but no error - this is unusual
-			return totalRead, io.ErrUnexpectedEOF
-		}
-		totalRead += n
 	}
+
 	return totalRead, nil
 }
 
@@ -264,35 +275,38 @@ func NewVideoProcessor(videoURL, outputDir string, timeRange *TimeRange, sampleE
 	}
 }
 
-// TempVideoProcessor provides GPU acceleration with minimal code changes
 func (vp *VideoProcessor) createGPUProcessedTempFile() (string, error) {
-	// Create a temporary file path
 	tempDir := os.TempDir()
-	tempFile := filepath.Join(tempDir, fmt.Sprintf("ffmpeg_temp_%d.rgb", time.Now().UnixNano()))
+	tempFile := filepath.Join(tempDir, fmt.Sprintf("ffmpeg_temp_%d.hevc", time.Now().UnixNano()))
 
-	// Build GPU-accelerated command
 	args := []string{
 		"-hwaccel", "cuda",
 		"-hwaccel_output_format", "cuda",
+		"-err_detect", "aggressive",
+		"-xerror",
+		"-loglevel", "verbose",
+		"-reconnect", "1",
+		"-reconnect_streamed", "1",
+		"-reconnect_on_network_error", "1",
+		"-reconnect_on_http_error", "4xx,5xx",
+		"-reconnect_delay_max", "120",
+		"-reconnect_max_retries", "10",
+		"-timeout", "10000000",
+		"-avioflags", "direct",
 	}
 
-	// Add time range if specified (reusing your existing code)
 	if vp.TimeRange != nil {
 		if vp.TimeRange.Start != "" {
 			args = append(args, "-ss", vp.TimeRange.Start)
 		}
 		if vp.TimeRange.End != "" {
-			// If end is specified, calculate duration
 			startTime, endTime := 0.0, 0.0
-
-			// Parse times
 			if s, err := parseTimeString(vp.TimeRange.Start); err == nil {
 				startTime = s
 			}
 			if e, err := parseTimeString(vp.TimeRange.End); err == nil {
 				endTime = e
 			}
-
 			if endTime > startTime {
 				duration := endTime - startTime
 				args = append(args, "-t", fmt.Sprintf("%.3f", duration))
@@ -300,16 +314,11 @@ func (vp *VideoProcessor) createGPUProcessedTempFile() (string, error) {
 		}
 	}
 
-	// Input file
 	args = append(args, "-i", vp.VideoURL)
-
-	// Calculate target dimensions (reusing your existing logic)
 	originalWidth, originalHeight := vp.width, vp.height
 	targetHeight := 240
 	targetWidth := int(float64(targetHeight) * float64(originalWidth) / float64(originalHeight))
 	targetWidth = targetWidth - (targetWidth % 2)
-
-	// Store these dimensions for later use
 	vp.width = targetWidth
 	vp.height = targetHeight
 	vp.frameSize = vp.width * vp.height * 3
@@ -317,7 +326,6 @@ func (vp *VideoProcessor) createGPUProcessedTempFile() (string, error) {
 	log.Printf("Scaling video from %dx%d to %dx%d using GPU acceleration",
 		originalWidth, originalHeight, targetWidth, targetHeight)
 
-	// Build filter for GPU acceleration
 	filterComplex := fmt.Sprintf(
 		"fps=%d,scale_cuda=%d:%d",
 		vp.SampleEveryNFrames, targetWidth, targetHeight,
@@ -327,22 +335,53 @@ func (vp *VideoProcessor) createGPUProcessedTempFile() (string, error) {
 		"-vf", filterComplex,
 		"-c:v", "hevc_nvenc",
 		"-an",
+		"-progress", "pipe:1",
+		"-flush_packets", "1",
+		"-f", "hevc",
+		"-fflags", "+autobsf",
 		tempFile,
 	)
+	log.Printf("[DEBUG] FFmpeg temp output: %s", tempFile)
+	log.Printf("[DEBUG] FFmpeg args: %v", args)
 
-	cmd := exec.Command("ffmpeg", args...)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 
-	// Capture stderr for logging
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", fmt.Errorf("error creating stdout pipe: %w", err)
+	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return "", fmt.Errorf("error creating stderr pipe: %w", err)
 	}
 
 	go func() {
+		scanner := bufio.NewScanner(stdout)
+		buf := make([]byte, 0, 64*1024)
+		scanner.Buffer(buf, 1024*1024)
+		for scanner.Scan() {
+			log.Printf("FFmpeg Progress: %s", scanner.Text())
+		}
+		if err := scanner.Err(); err != nil && err != io.EOF {
+			log.Printf("Error reading FFmpeg stdout: %v", err)
+		}
+		log.Println("FFmpeg stdout closed")
+		stdout.Close()
+	}()
+
+	go func() {
 		scanner := bufio.NewScanner(stderr)
+		buf := make([]byte, 0, 64*1024)
+		scanner.Buffer(buf, 1024*1024)
 		for scanner.Scan() {
 			log.Printf("FFmpeg GPU Processing: %s", scanner.Text())
 		}
+		if err := scanner.Err(); err != nil && err != io.EOF {
+			log.Printf("Error reading FFmpeg stderr: %v", err)
+		}
+		stderr.Close()
 	}()
 
 	log.Println("Starting GPU-accelerated preprocessing...")
@@ -350,21 +389,55 @@ func (vp *VideoProcessor) createGPUProcessedTempFile() (string, error) {
 		return "", fmt.Errorf("error starting FFmpeg preprocessing: %w", err)
 	}
 
-	if err := cmd.Wait(); err != nil {
-		return "", fmt.Errorf("error in FFmpeg preprocessing: %w", err)
-	}
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
 
-	fileInfo, err := os.Stat(tempFile)
-	if err != nil {
-		log.Printf("Warning: Unable to get temporary file size: %v", err)
-	} else {
-		fileSizeBytes := fileInfo.Size()
-		fileSizeGB := float64(fileSizeBytes) / (1024 * 1024 * 1024)
-		log.Printf("Temporary file size: %.4f GB", fileSizeGB)
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case err := <-done:
+			if err != nil {
+				if ctx.Err() == context.DeadlineExceeded {
+					return "", fmt.Errorf("FFmpeg process timed out after 60 minutes")
+				}
+				return "", fmt.Errorf("error in FFmpeg preprocessing: %w", err)
+			}
+			fileInfo, err := os.Stat(tempFile)
+			if err != nil {
+				log.Printf("Warning: Unable to get temporary file size: %v", err)
+			} else {
+				fileSizeBytes := fileInfo.Size()
+				fileSizeGB := float64(fileSizeBytes) / (1024 * 1024 * 1024)
+				log.Printf("Temporary file size: %.6f GB", fileSizeGB)
+			}
+			log.Printf("Created GPU-processed file: %s", tempFile)
+			return tempFile, nil
+		case <-ticker.C:
+			// Check if the file size has reached the limit
+			fileInfo, err := os.Stat(tempFile)
+			if err == nil && fileInfo.Size() >= 10000000000 { // 10 GB
+				log.Printf("File reached max size, terminating FFmpeg")
+				if err := cmd.Process.Kill(); err != nil {
+					log.Printf("Warning: failed to kill FFmpeg process: %v", err)
+				}
+				fileInfo, err := os.Stat(tempFile)
+				if err != nil {
+					log.Printf("Warning: Unable to get temporary file size: %v", err)
+				} else {
+					fileSizeBytes := fileInfo.Size()
+					fileSizeGB := float64(fileSizeBytes) / (1024 * 1024 * 1024)
+					log.Printf("Temporary file size: %.6f GB", fileSizeGB)
+				}
+				log.Printf("Created GPU-processed file: %s", tempFile)
+				return tempFile, nil
+			}
+		case <-ctx.Done():
+			return "", fmt.Errorf("FFmpeg process timed out after 60 minutes")
+		}
 	}
-
-	log.Printf("Created GPU-processed file: %s", tempFile)
-	return tempFile, nil
 }
 
 // Updated version of ProcessFrames that uses two-step processing
@@ -402,6 +475,7 @@ func (vp *VideoProcessor) ProcessFramesWithGPU(ctx context.Context) error {
 	// Step 2: Process compressed frames from the temporary file
 	// Build a simpler FFmpeg command to read from the temp file
 	args := []string{
+		"-hwaccel", "cuda",
 		"-i", tempFile,
 		"-f", "rawvideo",
 		"-pix_fmt", "rgb24",
@@ -492,7 +566,7 @@ func (vp *VideoProcessor) ProcessFramesWithGPU(ctx context.Context) error {
 		// Read a complete frame with timeout
 		readCtx, readCancel := context.WithTimeout(processCtx, 30*time.Second)
 		// start := time.Now()
-		bytesRead, err := readFullFrame(stdout, frameBuffer.data, readCtx)
+		bytesRead, err := readFullFrameSafe(stdout, frameBuffer.data, readCtx)
 		// log.Printf("Read frame %d in %v", frameCount, time.Since(start))
 
 		readCancel()
@@ -563,7 +637,7 @@ ProcessingComplete:
 	}
 
 	elapsedTime := time.Since(startTime).Seconds()
-	log.Printf("Processing complete! Analyzed %d frames in %.2f seconds", frameCount, elapsedTime)
+	log.Printf("Processing complete! Processed file and %d frames in %.2f seconds", frameCount, elapsedTime)
 	log.Printf("Results saved to %s", resultsFile)
 
 	return nil
