@@ -10,3 +10,4 @@ __pycache__
 database.db
 /results
 *.exe
+launch.json
