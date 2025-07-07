@@ -148,11 +148,26 @@ class Controller:
             try:
                 scenes = db.get_all_scenes_by_movie_name(self.movie_name)
 
-                config_scene_counter = defaultdict(int)
+                # Return entire scene tuples
+                scene_dict = defaultdict(list)
                 for scene in scenes:
                     # scene[1] is the config_id
-                    config_scene_counter[scene[1]] += 1
-                return {"status": "success", "data": config_scene_counter}
+                    scene_dict[scene[1]].append(
+                        {
+                            "start": scene[2],
+                            "end": scene[3],
+                            "color": [scene[4], scene[5], scene[6]],
+                            "saturation": scene[7] if len(scene) > 7 else 100,
+                        }
+                    )
+                # Sort by start time
+                for scene_list in scene_dict.values():
+                    scene_list.sort(key=lambda x: x["start"])
+
+                return {
+                    "status": "success",
+                    "data": scene_dict,
+                }
             except Exception as e:
                 logger.error(f"Error loading movie data from DB: {e}")
                 return {"status": "error", "message": str(e)}
@@ -175,6 +190,7 @@ class Controller:
             return NO_ACTIVE_SESSION_RESPONSE
 
         movie_config: MovieConfig = Controller._movie_config(movie_config_data)
+
         movie: Movie = Movie(
             path=self.stream_url,
             name=self.movie_name,

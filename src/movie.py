@@ -3,6 +3,7 @@ from io import BytesIO
 import time
 from typing import List, Optional
 
+
 import numpy as np
 
 from constants import (
@@ -218,6 +219,7 @@ class Movie:
                     start=int((light_event["start"] / FPS) * 1000),
                     end=int((light_event["end"] / FPS) * 1000),
                     color=light_event["color"],
+                    saturation=light_event.get("saturation", 100),
                 )
             )
         return scenes
@@ -245,6 +247,7 @@ class Movie:
             start=scene1.end,
             end=scene2.start,
             color=[int(-scene2.color[0]), scene2.color[1], scene2.color[2]],
+            saturation=scene2.saturation,
         )
 
     def extend_last_scene(self, new_end_position: int):

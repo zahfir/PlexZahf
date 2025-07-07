@@ -56,6 +56,7 @@ class Main:
             )
             self.home_assistant.set_living_room_lights_color(
                 color=self.current_lighting.color,
+                saturation=self.current_lighting.saturation,
                 brightness_pct=self.brightness_pct,
             )
         return self.brightness_pct
@@ -92,6 +93,7 @@ class Main:
             logger.info(f"Changing lights: {scene}")
             self.home_assistant.set_living_room_lights_color(
                 color=scene.color,
+                saturation=scene.saturation,
                 brightness_pct=self.brightness_pct,
             )
 

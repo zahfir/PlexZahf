@@ -1,7 +1,5 @@
 from typing import List, Tuple
 
-from utils.color.color_utils import color_difference
-
 
 class Scene:
     """
@@ -18,6 +16,7 @@ class Scene:
         start: int,
         end: int,
         color: List[int] | Tuple[int, int, int],
+        saturation: int = 100,
         array_index: int | None = None,
     ):
         """
@@ -27,7 +26,7 @@ class Scene:
             start: Start time in milliseconds
             end: End time in milliseconds
             color: Hue (0 - 179) at [0] iff [1] < 0 and [2] < 0 or RGB as a list or tuple of 3 integers (0-255)
-
+            saturation: Saturation percentage (0-100)
         Raises:
             ValueError: If end time is not after start time or if color format is invalid
         """
@@ -40,6 +39,7 @@ class Scene:
         self.start = start
         self.end = end
         self.color = list(color)
+        self.saturation = saturation
         self.array_index = array_index
 
     @staticmethod
@@ -83,4 +83,4 @@ class Scene:
         }
 
     def __repr__(self):
-        return f"Scene(i={self.array_index}, start={self.start}, end={self.end}, color={self.color}, timerange={self.time_range_mmss})"
+        return f"Scene(i={self.array_index}, ms={self.start}-{self.end}, color={self.color}, sat={self.saturation}, timerange={self.time_range_mmss})"

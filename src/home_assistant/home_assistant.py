@@ -65,6 +65,7 @@ class HomeAssistant:
     def set_living_room_lights_color(
         self,
         color: Union[List[int], Tuple[int, int, int]],
+        saturation: int = 100,
         brightness_pct: int | None = None,
     ) -> None:
         """Set the color of both living room lights."""
@@ -77,13 +78,13 @@ class HomeAssistant:
 
         is_hue = color[0] >= 0 and color[1] < 0 and color[2] < 0
         if is_hue:
-            hue = color[0] * 2  # 0-360
-            sat = 100
+            hue = int(color[0] * 2)  # 0-360
+            s = min(int(saturation * 1.5), 100)  # scale up saturation
             return client.trigger_service(
                 "light",
                 "turn_on",
                 entity_id=self.living_room_lights,
-                hs_color=[hue, sat],
+                hs_color=[hue, s],
                 brightness_pct=brightness_pct,
             )
 

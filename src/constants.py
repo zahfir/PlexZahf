@@ -9,7 +9,7 @@ SCENE_BOUNDARY_THRESHOLD_MS = 2000
 
 # KMeans clustering settings
 COLORS_PER_FRAME = 5
-PIXEL_SAMPLE_SIZE = 1000
+PIXEL_SAMPLE_SIZE = 5000
 
 # FFMPEG transcode settings (these are hardcoded in Go module)
 WIDTH = 426
@@ -21,7 +21,7 @@ FPS = 5
 HUE_TOLERANCE = 1
 MIN_SCENE_FRAMES = 20
 MAX_GAP_FRAMES = 20
-SCORE_THRESHOLD = 1200
+SCORE_THRESHOLD = 400
 
 # Exponential bias for more colorful scenes
 # Penalizes white/black scenes and frames

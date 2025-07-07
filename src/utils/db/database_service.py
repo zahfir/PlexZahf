@@ -84,6 +84,7 @@ class DatabaseService:
                 red INTEGER NOT NULL,
                 green INTEGER NOT NULL,
                 blue INTEGER NOT NULL,
+                saturation INTEGER DEFAULT 100,
                 FOREIGN KEY (config_id) REFERENCES MOVIE_CONFIG(config_id)
             )
             """
@@ -198,6 +199,9 @@ class DatabaseService:
             start=row[2],
             end=row[3],
             color=[row[4], row[5], row[6]],
+            saturation=(
+                row[7] if len(row) > 7 else 100
+            ),  # Handle old rows without saturation
             array_index=i,
         )
 
@@ -442,7 +446,15 @@ class DatabaseService:
         )
 
         scene_rows = [
-            (config_id, s.start, s.end, s.color[0], s.color[1], s.color[2])
+            (
+                config_id,
+                s.start,
+                s.end,
+                s.color[0],
+                s.color[1],
+                s.color[2],
+                s.saturation,
+            )  # Convert Scene to tuple for DB insertion
             for s in scenes
         ]
         self.add_scenes(scene_rows)
@@ -500,13 +512,13 @@ class DatabaseService:
 
         Args:
             scenes (list): A list of tuples, where each tuple represents a scene
-                           (config_id, start, end, red, green, blue).
+                           (config_id, start, end, red, green, blue, saturation).
         """
         try:
             self.cursor.executemany(
                 """
-                INSERT INTO SCENE (config_id, start, end, red, green, blue)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO SCENE (config_id, start, end, red, green, blue, saturation)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 scenes,
             )
@@ -791,6 +803,7 @@ class DatabaseService:
                     red INTEGER NOT NULL,
                     green INTEGER NOT NULL,
                     blue INTEGER NOT NULL,
+                    saturation INTEGER DEFAULT 100,
                     FOREIGN KEY (config_id) REFERENCES MOVIE_CONFIG(config_id)
                 )
                 """
