@@ -79,7 +79,7 @@ class HomeAssistant:
         is_hue = color[0] >= 0 and color[1] < 0 and color[2] < 0
         if is_hue:
             hue = int(color[0] * 2)  # 0-360
-            s = min(int(saturation * 1.5), 100)  # scale up saturation
+            s = min(int(saturation + 33), 100)  # scale up saturation
             return client.trigger_service(
                 "light",
                 "turn_on",
