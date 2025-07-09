@@ -18,6 +18,7 @@ class HueStreakDetector:
         self.max_gap_frames = movie_config.max_gap_frames
         self.score_threshold = movie_config.score_threshold
         self.max_frames = 3000  # Maximum frames for a streak
+        self.min_proportion = 0.01  # Hue must be at least X% of the frame to be present
 
     def get_hue_presence_array(self, frame_colors, target_hue):
         """
@@ -26,10 +27,13 @@ class HueStreakDetector:
         presence = []
         for frame in frame_colors:
             found = False
-            for h in frame["hues"]:
+            for i, h in enumerate(frame["hues"]):
                 h_diff = abs(int(h) - int(target_hue)) % 180
                 dist = min(h_diff, 180 - h_diff)
-                if dist <= self.hue_tolerance:
+                if (
+                    dist <= self.hue_tolerance
+                    and frame["proportions"][i] >= self.min_proportion
+                ):
                     found = True
                     break
             presence.append(1 if found else 0)
